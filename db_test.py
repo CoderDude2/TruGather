@@ -66,18 +66,6 @@ class FileDB:
             )
         )
 
-        self.cur.execute(
-            (
-                "CREATE TABLE "
-                "IF NOT EXISTS warnings ("
-                "warning_id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                "warning_type INTEGER NOT NULL,"
-                "warning_msg TEXT NOT NULL,"
-                "nc_file_id INTEGER NOT NULL,"
-                "FOREIGN KEY(nc_file_id) REFERENCES nc_files(nc_file_id))"
-            )
-        )
-
     def add_nc_file(self, nc_file: NCFile):
         self.cur.execute(
             "INSERT INTO nc_files (nc_file_path, nc_file_name, nc_file_modified_time) VALUES (?, ?, ?)",
