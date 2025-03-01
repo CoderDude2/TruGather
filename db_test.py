@@ -2,6 +2,7 @@ from pathlib import Path
 import sqlite3
 from dataclasses import dataclass
 from enum import Enum
+from typing import Generator
 
 
 BASE_DIR: Path = Path(__file__).resolve().parent
@@ -48,8 +49,8 @@ class FileDB:
                 "CREATE TABLE "
                 "IF NOT EXISTS nc_files ("
                 "nc_file_id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                "nc_file_path TEXT NOT NULL,"
-                "nc_file_name TEXT NOT NULL,"
+                "nc_file_path TEXT NOT NULL UNIQUE,"
+                "nc_file_name TEXT NOT NULL UNIQUE,"
                 "nc_file_modified_time INTEGER NOT NULL)"
             )
         )
@@ -100,7 +101,7 @@ class FileDB:
             error_list.append(NCError(ErrorType(row[1]), row[2]))
         return error_list
 
-    def get_errors_by_file_id(self, nc_file_id: int) -> list[NCError]:
+    def get_errors_by_file_id(self, nc_file_id: int) -> tuple[NCError,...]:
         nc_errors: list[NCError] = []
 
         res = self.cur.execute(
@@ -110,7 +111,12 @@ class FileDB:
         for row in res:
             nc_errors.append(NCError(ErrorType(row[1]), row[2]))
 
-        return nc_errors
+        return tuple(nc_errors)
+
+    def get_errors_for_nc_file(self,nc_file: NCFile) -> tuple[NCError,...]:
+        file_id = self.get_file_id_by_path(nc_file.file_path)
+
+        return self.get_errors_by_file_id(file_id)
 
     def get_file_id_by_path(self, nc_file_path: Path) -> int | None:
         res = self.cur.execute(
@@ -120,15 +126,37 @@ class FileDB:
         if not res:
             return None
         return res[0]
+    
+    def get_files_by_name(self, nc_file_name: str) -> list[NCFile] | None:
+        nc_file_list: list[NCFile] = []
+        res = self.cur.execute(
+            "SELECT nc_file_path, nc_file_name FROM nc_files WHERE nc_file_name = ?",
+            (nc_file_name,)
+        )
+
+        if not res:
+            return None
+        
+        nc_file_list = [NCFile(row[0], row[1]) for row in res]
+
+        return nc_file_list  
 
     def close_db(self) -> None:
         self.con.close()
 
 
+def get_nc_files(nc_file_path: Path) -> Generator[NCFile|None, None, None]:
+    for file in nc_file_path.iterdir():
+        if file.is_file() and file.suffix.lower() == '.prg':
+            yield NCFile(file.absolute(), file.name)
+
+
 def main() -> None:
     file_db = FileDB()
+
     for nc_file in file_db.get_all_nc_files():
-        print(nc_file)
+        print(nc_file, file_db.get_errors_for_nc_file(nc_file))
+
     file_db.close_db()
 
 
