@@ -19,7 +19,8 @@ def date_as_path(date=None):
     _year = f'Y{str(date.year)}'
     return os.path.join(_year, _month, _day)
 
-REMOTE_PRG_PATH = fr'\\192.168.1.100\Trubox\####ERP_RM####\{date_as_path()}\1. CAM\3. NC files'
+# REMOTE_PRG_PATH = fr'\\192.168.1.100\Trubox\####ERP_RM####\{date_as_path()}\1. CAM\3. NC files'
+REMOTE_PRG_PATH = './nc'
 TODAYS_DATE = datetime.datetime.now().date()
 
 def xcopy(src:str, dst:str) -> None:

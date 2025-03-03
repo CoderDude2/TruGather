@@ -32,7 +32,6 @@ class App(tk.Tk):
         super().__init__()
         self.fm = file_manager.FileManager()
         self.fm.load(os.path.join(ROOT_DIR, "data.json"))
-        self.fm.process()
 
         self.geometry("445x275")
         self.minsize(445, 275)
