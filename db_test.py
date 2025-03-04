@@ -99,7 +99,9 @@ def delete_nc_file(nc_file: NCFile):
         nc_file_id = get_file_id(nc_file)
 
         cur.execute("DELETE from errors WHERE nc_file_id = ?", (nc_file_id,))
-
+        cur.execute("DELETE from gathered_nc_files WHERE nc_file_id = ?", (nc_file_id,))
+        if (ALL_FOLDER / nc_file.file_name).exists():
+            (ALL_FOLDER / nc_file.file_name).unlink()
         cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (nc_file_id,))
         con.commit()
 
@@ -378,6 +380,18 @@ def gather_nc_file(nc_file: NCFile) -> None:
         )
         con.commit()
 
+def ungather_nc_file(nc_file: NCFile) -> None:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        
+        file_id = get_file_id(nc_file)
+        gathered_file = ALL_FOLDER / nc_file.file_name
+
+        if file_id and gathered_file.exists():
+            gathered_file.unlink()
+            cur.execute("DELETE FROM gathered_nc_files WHERE nc_file_id = ?",(file_id,))
+            con.commit()
+
 def get_all_gathered_nc_files() -> list[NCFile]:
     gathered_nc_files: list[NCFile] = []
 
@@ -414,12 +428,15 @@ def main() -> None:
             nc_errors = get_errors_for_nc_file(nc_file)
             errors = check_file(nc_file)
 
-            if errors:
-                add_errors(nc_file, errors)
-
             for nc_error in nc_errors:
                 if nc_error not in errors:
                     delete_error(nc_file, nc_error)
+
+            if errors:
+                add_errors(nc_file, errors)
+                ungather_nc_file(nc_file)
+            else:
+                gather_nc_file(nc_file)
 
             update_nc_file_time(nc_file)
 
@@ -428,10 +445,10 @@ def main() -> None:
         print(get_errors_for_nc_file(nc_file))
         print()
 
-    for error in get_all_errors():
-        print(error)
+    # for error in get_all_errors():
+    #     print(error)
 
 
 if __name__ == "__main__":
     main()
-    print(get_all_gathered_nc_files())
+    [print(nc.file_name) for nc in get_all_gathered_nc_files()]
