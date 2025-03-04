@@ -26,6 +26,10 @@ class ErrorType(Enum):
     MISSING_UG_VALUE = 4
     MISSING_SUBPROGRAM = 5
 
+@dataclass
+class NCError:
+    error_type: ErrorType
+    error_msg: str | None = None
 
 @dataclass
 class NCFile:
@@ -34,10 +38,7 @@ class NCFile:
     modified_time: float
 
 
-@dataclass
-class NCError:
-    error_type: ErrorType
-    error_msg: str | None = None
+
 
 
 def init_db() -> None:
