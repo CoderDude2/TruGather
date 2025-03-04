@@ -2,12 +2,14 @@ from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
 from typing import Generator
+
 import sqlite3
 import math
 import time
 import re
 import os
 import glob
+import shutil
 
 prg_regex = re.compile(r"(\d{4,})([A-Za-z.]+)")
 asc_folder_regex = re.compile(r"\d+.\d+_ASC_\((\d+)\)")
@@ -15,6 +17,7 @@ folder_regex = re.compile(r"(\d+) ?\((\d+)?\) ?([A-Za-z\+ ]+)?")
 
 
 BASE_DIR: Path = Path(__file__).resolve().parent
+ALL_FOLDER: Path = BASE_DIR / "nc" / "ALL"
 
 DB_FILE: Path = BASE_DIR / "data.db"
 
@@ -204,7 +207,7 @@ class FileDB:
 
 def get_nc_files(nc_file_path: Path) -> Generator[NCFile | None, None, None]:
     for file in nc_file_path.rglob("*.prg"):
-        if file.is_file() and file.suffix.lower() == ".prg":
+        if file.is_file() and file.suffix.lower() == ".prg" and "ALL" not in str(file.resolve()):
             yield NCFile(file.absolute(), file.name, file.stat().st_mtime)
 
 
@@ -316,12 +319,22 @@ def check_file(nc_file: NCFile) -> tuple[NCError, ...]:
 
 
 def main() -> None:
+    if not ALL_FOLDER.exists():
+        ALL_FOLDER.mkdir()
+
     file_db = FileDB()
 
     for nc_file in get_nc_files(Path("./nc")):
         if nc_file and not file_db.get_nc_file(nc_file):
             file_db.add_nc_file(nc_file)
-            file_db.add_errors(nc_file, check_file(nc_file))
+            errors = check_file(nc_file)
+
+            if errors:
+                file_db.add_errors(nc_file, errors)
+                continue
+            
+            shutil.copy2(nc_file.file_path.resolve(), ALL_FOLDER)
+            
 
     for nc_file in file_db.get_all_nc_files():
         if not nc_file.file_path.exists():
@@ -342,32 +355,13 @@ def main() -> None:
             file_db.update_nc_file_time(nc_file)
 
     for nc_file in file_db.get_all_nc_files():
-        print(nc_file.file_name)
+        print(nc_file.file_name, nc_file.file_path)
         print(file_db.get_errors_for_nc_file(nc_file))
         print(nc_file.modified_time)
         print()
 
-    # for error in file_db.get_all_errors():
-    #     print(error)
-
-    # if nc_file.file_path.stat().st_mtime != nc_file.modified_time:
-    #     errors = check_file(nc_file)
-    #     nc_errors = file_db.get_errors_for_nc_file(nc_file)
-
-    #     for nc_error in nc_errors:
-    #         if nc_error not in errors:
-    #             print(nc_error)
-
-    # file_db.update_nc_file_time(nc_file)
-    # errors = check_file(nc_file)
-    # if errors:
-    # file_db.add_errors(nc_file, errors)
-
     for error in file_db.get_all_errors():
         print(error)
-
-    # nc_file = NCFile(Path("./nc/Ashley/2 (10)/608.prg"), "608.prg")
-    # print(file_db.get_errors_for_nc_file(nc_file))
 
     file_db.close_db()
 
