@@ -5,10 +5,7 @@ from typing import Generator
 
 import sqlite3
 import math
-import time
 import re
-import os
-import glob
 import shutil
 
 prg_regex = re.compile(r"(\d{4,})([A-Za-z.]+)")
@@ -43,14 +40,10 @@ class NCError:
     error_msg: str | None = None
 
 
-class FileDB:
-    def __init__(self) -> None:
-        self.con: sqlite3.Connection = sqlite3.connect(DB_FILE)
-        self.cur: sqlite3.Cursor = self.con.cursor()
-        self.init_db()
-
-    def init_db(self) -> None:
-        self.cur.execute(
+def init_db() -> None:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        cur.execute(
             (
                 "CREATE TABLE "
                 "IF NOT EXISTS nc_files ("
@@ -61,7 +54,18 @@ class FileDB:
             )
         )
 
-        self.cur.execute(
+        cur.execute(
+            (
+                "CREATE TABLE "
+                "IF NOT EXISTS gathered_nc_files ("
+                "gathered_nc_file_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "gathered_nc_file_path TEXT NOT NULL UNIQUE,"
+                "nc_file_id INTEGER NOT NULL,"
+                "FOREIGN KEY(nc_file_id) REFERENCES nc_files(nc_file_id))"
+            )
+        )
+
+        cur.execute(
             (
                 "CREATE TABLE "
                 "IF NOT EXISTS errors ("
@@ -74,8 +78,11 @@ class FileDB:
             )
         )
 
-    def add_nc_file(self, nc_file: NCFile):
-        self.cur.execute(
+
+def add_nc_file(nc_file: NCFile):
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        cur.execute(
             "INSERT OR IGNORE INTO nc_files (nc_file_path, nc_file_name, nc_file_modified_time) VALUES (?, ?, ?)",
             (
                 str(nc_file.file_path.resolve()),
@@ -83,94 +90,123 @@ class FileDB:
                 nc_file.file_path.stat().st_mtime,
             ),
         )
-        self.con.commit()
+        con.commit()
 
-    def delete_nc_file(self, nc_file: NCFile):
-        nc_file_id = self.get_file_id(nc_file)
 
-        self.cur.execute("DELETE from errors WHERE nc_file_id = ?", (nc_file_id,))
+def delete_nc_file(nc_file: NCFile):
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        nc_file_id = get_file_id(nc_file)
 
-        self.cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (nc_file_id,))
-        self.con.commit()
+        cur.execute("DELETE from errors WHERE nc_file_id = ?", (nc_file_id,))
 
-    def update_nc_file_time(self, nc_file: NCFile):
-        nc_file_id = self.get_file_id(nc_file)
+        cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (nc_file_id,))
+        con.commit()
+
+
+def update_nc_file_time(nc_file: NCFile):
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        nc_file_id = get_file_id(nc_file)
         print(nc_file_id)
-        self.cur.execute(
+        cur.execute(
             "UPDATE nc_files SET nc_file_modified_time = ? WHERE nc_file_id = ?",
             (
                 nc_file.file_path.stat().st_mtime,
                 nc_file_id,
             ),
         )
-        self.con.commit()
+        con.commit()
 
-    def add_errors(self, nc_file: NCFile, nc_errors: tuple[NCError, ...]) -> None:
-        file_id: int | None = self.get_file_id(nc_file)
+
+def add_errors(nc_file: NCFile, nc_errors: tuple[NCError, ...]) -> None:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        file_id: int | None = get_file_id(nc_file)
 
         if file_id and nc_errors:
             nc_errors_list = [
                 (e.error_type.value, e.error_msg, file_id) for e in nc_errors
             ]
-            self.cur.executemany(
+            cur.executemany(
                 "INSERT OR IGNORE INTO errors (error_type, error_msg, nc_file_id) VALUES (?, ?, ?)",
                 nc_errors_list,
             )
-            self.con.commit()
+            con.commit()
 
-    def delete_error(self, nc_file: NCFile, nc_error: NCError):
-        file_id = self.get_file_id(nc_file)
 
-        self.cur.execute(
+def delete_error(nc_file: NCFile, nc_error: NCError):
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        file_id = get_file_id(nc_file)
+
+        cur.execute(
             "DELETE FROM errors "
             "WHERE nc_file_id = ? "
             "AND error_type = ? "
             "AND error_msg = ?",
             (file_id, nc_error.error_type.value, nc_error.error_msg),
         )
-        self.con.commit()
+        con.commit()
 
-    def get_all_nc_files(self) -> list[NCFile]:
+
+def get_all_nc_files() -> list[NCFile]:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
         nc_file_list: list[NCFile] = []
 
-        res = self.cur.execute("SELECT * FROM nc_files")
+        res = cur.execute("SELECT * FROM nc_files")
         for row in res:
             nc_file_list.append(NCFile(Path(row[1]), row[2], row[3]))
         return nc_file_list
 
-    def get_nc_file_by_file_id(self, nc_file_id: int) -> NCFile | None:
-        res = self.cur.execute(
+
+def get_nc_file_by_file_id(nc_file_id: int) -> NCFile | None:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        res = cur.execute(
             "SELECT * FROM nc_files WHERE nc_file_id = ?", (nc_file_id,)
         ).fetchone()
         if not res:
             return None
         return NCFile(res[1], res[2], res[3])
 
-    def get_all_errors(self) -> list[NCError]:
+
+def get_all_errors() -> list[NCError]:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+
         error_list: list[NCError] = []
-        res = self.cur.execute("SELECT * FROM errors")
+
+        res = cur.execute("SELECT * FROM errors")
         for row in res:
             error_list.append(NCError(ErrorType(row[1]), row[2]))
         return error_list
 
-    def get_errors_by_file_id(self, nc_file_id: int) -> tuple[NCError, ...]:
+
+def get_errors_by_file_id(nc_file_id: int) -> tuple[NCError, ...]:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+
         nc_errors: list[NCError] = []
 
-        res = self.cur.execute(
-            "SELECT * FROM errors WHERE nc_file_id = ?", (nc_file_id,)
-        )
+        res = cur.execute("SELECT * FROM errors WHERE nc_file_id = ?", (nc_file_id,))
 
         for row in res:
             nc_errors.append(NCError(ErrorType(row[1]), row[2]))
 
         return tuple(nc_errors)
 
-    def get_errors_for_nc_file(self, nc_file: NCFile) -> tuple[NCError, ...]:
-        file_id = self.get_file_id(nc_file)
-        return self.get_errors_by_file_id(file_id)
 
-    def get_file_id(self, nc_file: NCFile) -> int | None:
-        res = self.cur.execute(
+def get_errors_for_nc_file(nc_file: NCFile) -> tuple[NCError, ...]:
+    file_id = get_file_id(nc_file)
+    return get_errors_by_file_id(file_id)
+
+
+def get_file_id(nc_file: NCFile) -> int | None:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        res = cur.execute(
             "SELECT nc_file_id FROM nc_files WHERE nc_file_path = ?",
             (str(nc_file.file_path.resolve()),),
         ).fetchone()
@@ -178,8 +214,11 @@ class FileDB:
             return None
         return res[0]
 
-    def get_nc_file(self, nc_file: NCFile) -> NCFile | None:
-        res = self.cur.execute(
+
+def get_nc_file(nc_file: NCFile) -> NCFile | None:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        res = cur.execute(
             "SELECT nc_file_path, nc_file_name, nc_file_modified_time FROM nc_files WHERE nc_file_path = ?",
             (str(nc_file.file_path.resolve()),),
         ).fetchone()
@@ -187,9 +226,12 @@ class FileDB:
             return None
         return NCFile(res[0], res[1], res[2])
 
-    def get_files_by_name(self, nc_file_name: str) -> list[NCFile] | None:
+
+def get_files_by_name(nc_file_name: str) -> list[NCFile] | None:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
         nc_file_list: list[NCFile] = []
-        res = self.cur.execute(
+        res = cur.execute(
             "SELECT nc_file_path, nc_file_name, nc_file_modified_time FROM nc_files WHERE nc_file_name = ?",
             (nc_file_name,),
         )
@@ -201,13 +243,14 @@ class FileDB:
 
         return nc_file_list
 
-    def close_db(self) -> None:
-        self.con.close()
-
 
 def get_nc_files(nc_file_path: Path) -> Generator[NCFile | None, None, None]:
     for file in nc_file_path.rglob("*.prg"):
-        if file.is_file() and file.suffix.lower() == ".prg" and "ALL" not in str(file.resolve()):
+        if (
+            file.is_file()
+            and file.suffix.lower() == ".prg"
+            and "ALL" not in str(file.resolve())
+        ):
             yield NCFile(file.absolute(), file.name, file.stat().st_mtime)
 
 
@@ -318,53 +361,77 @@ def check_file(nc_file: NCFile) -> tuple[NCError, ...]:
     return tuple(errors)
 
 
+def gather_nc_file(nc_file: NCFile) -> None:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        shutil.copy2(
+            nc_file.file_path.resolve(), (ALL_FOLDER / nc_file.file_name).resolve()
+        )
+
+        file_id = get_file_id(nc_file)
+
+        cur.execute(
+            (
+                "INSERT OR IGNORE INTO gathered_nc_files (gathered_nc_file_path, nc_file_id) VALUES (?, ?)"
+            ),
+            (str((DB_FILE / nc_file.file_name).resolve()), file_id),
+        )
+        con.commit()
+
+def get_all_gathered_nc_files() -> list[NCFile]:
+    gathered_nc_files: list[NCFile] = []
+
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+
+        res = cur.execute("SELECT nc_file_id FROM gathered_nc_files")
+        for result in res:
+            gathered_nc_files.append(get_nc_file_by_file_id(result[0]))
+
+        return gathered_nc_files
+
 def main() -> None:
     if not ALL_FOLDER.exists():
         ALL_FOLDER.mkdir()
 
-    file_db = FileDB()
+    init_db()
 
     for nc_file in get_nc_files(Path("./nc")):
-        if nc_file and not file_db.get_nc_file(nc_file):
-            file_db.add_nc_file(nc_file)
+        if nc_file and not get_nc_file(nc_file):
+            add_nc_file(nc_file)
             errors = check_file(nc_file)
+            add_errors(nc_file, errors)
 
-            if errors:
-                file_db.add_errors(nc_file, errors)
-                continue
-            
-            shutil.copy2(nc_file.file_path.resolve(), ALL_FOLDER)
-            
+            if not errors:
+                gather_nc_file(nc_file)
 
-    for nc_file in file_db.get_all_nc_files():
+    for nc_file in get_all_nc_files():
         if not nc_file.file_path.exists():
-            file_db.delete_nc_file(nc_file)
+            delete_nc_file(nc_file)
             continue
 
         if nc_file.modified_time != nc_file.file_path.stat().st_mtime:
-            nc_errors = file_db.get_errors_for_nc_file(nc_file)
+            nc_errors = get_errors_for_nc_file(nc_file)
             errors = check_file(nc_file)
 
             if errors:
-                file_db.add_errors(nc_file, errors)
+                add_errors(nc_file, errors)
 
             for nc_error in nc_errors:
                 if nc_error not in errors:
-                    file_db.delete_error(nc_file, nc_error)
+                    delete_error(nc_file, nc_error)
 
-            file_db.update_nc_file_time(nc_file)
+            update_nc_file_time(nc_file)
 
-    for nc_file in file_db.get_all_nc_files():
-        print(nc_file.file_name, nc_file.file_path)
-        print(file_db.get_errors_for_nc_file(nc_file))
-        print(nc_file.modified_time)
+    for nc_file in get_all_nc_files():
+        print(nc_file.file_name, nc_file.file_path, nc_file.modified_time)
+        print(get_errors_for_nc_file(nc_file))
         print()
 
-    for error in file_db.get_all_errors():
+    for error in get_all_errors():
         print(error)
-
-    file_db.close_db()
 
 
 if __name__ == "__main__":
     main()
+    print(get_all_gathered_nc_files())
