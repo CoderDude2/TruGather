@@ -221,49 +221,61 @@ def delete_nc_file(nc_file: NCFile) -> None:
 
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
-        cur.execute("DELETE from errors WHERE nc_file_id = ?", (file_id,))
+        cur.execute("DELETE FROM errors WHERE nc_file_id = ?", (file_id,))
         cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (file_id,))
 
 
 def is_gathered(nc_file: NCFile) -> bool:
     file_id:int|None = get_file_id(nc_file)
-    if not file_id:
-        return False
 
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
 
         res = cur.execute(
-            "SELECT nc_file_id FROM gathered_nc_files WHERE nc_file_id = ?", 
+            "SELECT nc_file_id FROM gathered_nc_files WHERE nc_file_id = ?",
             (file_id,)
-        )
-
-        if not res.fetchone():
-            return False
+        ).fetchone()
         
+        if not res:
+            return False
+
         return True
 
-
 def gather_nc_file(nc_file: NCFile) -> None:
+    print(nc_file)
     file_id: int | None = get_file_id(nc_file)
     gathered_path: Path = ALL_FOLDER / nc_file.path.name
-
-    if gathered_path.exists():
-        return
-
-    shutil.copy2(nc_file.path.resolve(), gathered_path.resolve())
 
     if not file_id:
         return
 
+    try:
+        with sqlite3.connect(DB_FILE) as con:
+            cur: sqlite3.Cursor = con.cursor()
+            cur.execute("INSERT INTO gathered_nc_files (gathered_nc_file_path, nc_file_id) VALUES (?, ?)",
+                        (
+                            str(gathered_path.resolve()),
+                            file_id
+                        ))
+    except sqlite3.IntegrityError:
+        print(f"{nc_file.path} is a duplicate")
+
+def remove_nc_from_gather(nc_file: NCFile) -> None:
+    file_id: int | None = get_file_id(nc_file)
+
+    if not file_id:
+        return
+    
+    gathered_path: Path = ALL_FOLDER / nc_file.path.name
+
+    if gathered_path.exists():
+        gathered_path.unlink()
+
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
-        cur.execute("INSERT INTO gathered_nc_files (gathered_nc_file_path, nc_file_id) VALUES (?, ?)",
-                    (
-                        str(gathered_path.resolve()),
-                        file_id
-                    ))
-
+        cur.execute("DELETE FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,))
+        con.commit()
+    
 
 def update_nc_file(nc_file: NCFile) -> None:
     file_id: int | None = get_file_id(nc_file)
@@ -334,7 +346,6 @@ def get_all_nc_files() -> list[NCFile]:
             nc_files.append(NCFile(Path(row[0]), row[1]))
         return nc_files
 
-
 def get_file_id(nc_file: NCFile) -> int | None:
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
@@ -369,6 +380,12 @@ def get_errors(nc_file: NCFile) -> tuple[NCError, ...]:
 
     return tuple(errors)
 
+def is_modified(nc_file: NCFile) -> bool:
+    file_id:int | None = get_file_id(nc_file)
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        res = cur.execute("SELECT nc_file_modified_time FROM nc_files WHERE nc_file_id = ?", (file_id,)).fetchone()
+        return nc_file.path.stat().st_mtime != res[0]
 
 def get_modified_files() -> list[NCFile]:
     modified_nc_files: list[NCFile] = []
@@ -379,34 +396,44 @@ def get_modified_files() -> list[NCFile]:
 
     return modified_nc_files
 
-
 def main() -> None:
     init_db()
 
     for file in get_nc_files(NC_FOLDER):
         if not is_tracked(file):
             add_to_database(file)
-
+    
     for nc_file in get_all_nc_files():
         if not nc_file.path.exists():
+            if is_gathered(nc_file):
+                remove_nc_from_gather(nc_file)
+            
             delete_nc_file(nc_file)
             continue
+
+        if is_modified(nc_file):
+            print(nc_file, "is modified")
+            update_nc_file(nc_file)
         
         if not is_gathered(nc_file) and not get_errors(nc_file):
             gather_nc_file(nc_file)
+        
+        if is_gathered(nc_file) and get_errors(nc_file):
+            remove_nc_from_gather(nc_file)
 
-    for nc_file in get_modified_files():
-        print(nc_file.path.name)
-        update_nc_file(nc_file)
+        if is_gathered(nc_file) and not (ALL_FOLDER / nc_file.path.name).exists():
+            shutil.copy2(nc_file.path.resolve(), (ALL_FOLDER / nc_file.path.name).resolve())
 
 
 if __name__ == "__main__":
     main()
-    # for file in get_all_nc_files():
-    #     print(file, get_errors(file))
 
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
+
+        res = cur.execute("SELECT * FROM nc_files")
+        for row in res.fetchall():
+            print(row)
 
         res = cur.execute("SELECT * FROM gathered_nc_files")
         for row in res.fetchall():
