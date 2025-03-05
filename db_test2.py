@@ -227,7 +227,6 @@ def delete_nc_file(nc_file: NCFile) -> None:
 
 def is_gathered(nc_file: NCFile) -> bool:
     file_id:int|None = get_file_id(nc_file)
-
     if not file_id:
         return False
 
@@ -235,11 +234,13 @@ def is_gathered(nc_file: NCFile) -> bool:
         cur: sqlite3.Cursor = con.cursor()
 
         res = cur.execute(
-            "SELECT nc_file_id FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,)
+            "SELECT nc_file_id FROM gathered_nc_files WHERE nc_file_id = ?", 
+            (file_id,)
         )
-        
+
         if not res.fetchone():
             return False
+        
         return True
 
 
@@ -382,6 +383,9 @@ def main() -> None:
     for nc_file in get_all_nc_files():
         if not nc_file.path.exists():
             delete_nc_file(nc_file)
+        
+        if not is_gathered(nc_file):
+            gather_nc_file(nc_file)
 
     for file in get_nc_files(NC_FOLDER):
         if not is_tracked(file):
@@ -394,12 +398,12 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    for file in get_all_nc_files():
-        print(file, get_errors(file))
+    # for file in get_all_nc_files():
+    #     print(file, get_errors(file))
 
-    with sqlite3.connect(DB_FILE) as con:
-        cur: sqlite3.Cursor = con.cursor()
+    # with sqlite3.connect(DB_FILE) as con:
+    #     cur: sqlite3.Cursor = con.cursor()
 
-        res = cur.execute("SELECT * FROM errors")
-        for row in res.fetchall():
-            print(row)
+    #     res = cur.execute("SELECT * FROM gathered_nc_files")
+    #     for row in res.fetchall():
+    #         print(row)
