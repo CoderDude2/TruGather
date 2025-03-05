@@ -240,15 +240,6 @@ def delete_nc_file(nc_file: NCFile) -> None:
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
         cur.execute("DELETE FROM errors WHERE nc_file_id = ?", (file_id,))
-
-        results = cur.execute(
-            "SELECT nc_file_id FROM nc_files WHERE nc_file_name = ? AND nc_file_id != ?",
-            (
-                nc_file.path.name,
-                file_id,
-            ),
-        )
-
         cur.execute(
             "DELETE FROM duplicates WHERE original_nc_file_id = ?",
             (file_id,),
@@ -505,6 +496,7 @@ def main() -> None:
         try:
             for file in get_nc_files(NC_FOLDER):
                 if not is_tracked(file):
+                    # TODO: Change add_to_database to check the file for errors and check if it is a duplicate
                     add_to_database(file)
 
             for nc_file in get_all_nc_files():
