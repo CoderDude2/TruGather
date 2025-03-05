@@ -248,6 +248,9 @@ def gather_nc_file(nc_file: NCFile) -> None:
     file_id: int | None = get_file_id(nc_file)
     gathered_path: Path = ALL_FOLDER / nc_file.path.name
 
+    if gathered_path.exists():
+        return
+
     shutil.copy2(nc_file.path.resolve(), gathered_path.resolve())
 
     if not file_id:
@@ -380,16 +383,17 @@ def get_modified_files() -> list[NCFile]:
 def main() -> None:
     init_db()
 
-    for nc_file in get_all_nc_files():
-        if not nc_file.path.exists():
-            delete_nc_file(nc_file)
-        
-        if not is_gathered(nc_file):
-            gather_nc_file(nc_file)
-
     for file in get_nc_files(NC_FOLDER):
         if not is_tracked(file):
             add_to_database(file)
+
+    for nc_file in get_all_nc_files():
+        if not nc_file.path.exists():
+            delete_nc_file(nc_file)
+            continue
+        
+        if not is_gathered(nc_file) and not get_errors(nc_file):
+            gather_nc_file(nc_file)
 
     for nc_file in get_modified_files():
         print(nc_file.path.name)
@@ -401,9 +405,9 @@ if __name__ == "__main__":
     # for file in get_all_nc_files():
     #     print(file, get_errors(file))
 
-    # with sqlite3.connect(DB_FILE) as con:
-    #     cur: sqlite3.Cursor = con.cursor()
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
 
-    #     res = cur.execute("SELECT * FROM gathered_nc_files")
-    #     for row in res.fetchall():
-    #         print(row)
+        res = cur.execute("SELECT * FROM gathered_nc_files")
+        for row in res.fetchall():
+            print(row)
