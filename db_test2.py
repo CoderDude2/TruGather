@@ -36,6 +36,7 @@ class NCError:
     error_type: ErrorType
     error_msg: str | None = None
 
+
 def check_file(file_path: Path) -> tuple[NCError, ...]:
     errors: list[NCError] = []
     part_length: float = 0
@@ -142,6 +143,7 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
             errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #105 value"))
     return tuple(errors)
 
+
 def get_nc_files(file_path: Path) -> list[Path]:
     nc_files: list[Path] = []
 
@@ -191,6 +193,7 @@ def init_db() -> None:
             )
         )
 
+
 def add_to_database(file_path: Path) -> None:
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
@@ -202,25 +205,44 @@ def add_to_database(file_path: Path) -> None:
             file_id: int = cur.lastrowid
             cur.executemany(
                 "INSERT OR IGNORE INTO errors (error_type, error_msg, nc_file_id) VALUES (?, ?, ?)",
-                [(e.error_type.value, e.error_msg, file_id) for e in check_file(file_path)]
+                [
+                    (e.error_type.value, e.error_msg, file_id)
+                    for e in check_file(file_path)
+                ],
             )
+        con.commit()
+
+def update_nc_file(nc_file:NCFile) -> None:
+    # TODO: Check file for errors and remove any that no longer exist.
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        cur.execute(
+            "UPDATE nc_files SET nc_file_modified_time = ? WHERE nc_file_path = ?",
+            (
+                nc_file.path.stat().st_mtime,
+                str(nc_file.path.resolve()),
+            ),
+        )
         con.commit()
 
 def is_tracked(file_path: Path) -> bool:
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
 
-        res = cur.execute("SELECT nc_file_id FROM nc_files WHERE nc_file_path = ?", (str(file_path),))
+        res = cur.execute(
+            "SELECT nc_file_id FROM nc_files WHERE nc_file_path = ?", (str(file_path),)
+        )
         if not res.fetchone():
             return False
         return True
+
 
 def get_all_nc_files() -> list[NCFile]:
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
 
         nc_files: list[NCFile] = []
-        
+
         results = cur.execute(
             "SELECT nc_file_path, nc_file_modified_time FROM nc_files"
         )
@@ -229,30 +251,45 @@ def get_all_nc_files() -> list[NCFile]:
             nc_files.append(NCFile(Path(row[0]), row[1]))
         return nc_files
 
-def get_errors(nc_file: NCFile) -> tuple[NCError, ...]:
-    errors: tuple[NCError, ...] = ()
 
-    return errors
+def get_errors(nc_file: NCFile) -> tuple[NCError, ...]:
+    errors: list[NCError] = []
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        file_id_result = cur.execute(
+            "SELECT nc_file_id FROM nc_files WHERE nc_file_path = ?",
+            (str(nc_file.path.resolve()),),
+        ).fetchone()
+
+        file_id: int | None = file_id_result[0]
+        if file_id:
+            results = cur.execute("SELECT error_type, error_msg FROM errors WHERE nc_file_id = ?", (file_id,))
+            for row in results:
+                errors.append(NCError(ErrorType(row[0]), row[1]))
+        
+    return tuple(errors)
+
 
 def get_modified_files() -> list[NCFile]:
     modified_nc_files: list[NCFile] = []
-    
+
     for nc_file in get_all_nc_files():
         if nc_file.path.stat().st_mtime != nc_file.modified_time:
             modified_nc_files.append(nc_file)
 
     return modified_nc_files
 
+
 def main() -> None:
     init_db()
 
-    
     for file in get_nc_files(NC_FOLDER):
         if not is_tracked(file):
             add_to_database(file)
 
     for nc_file in get_modified_files():
-        print(nc_file.path.name, check_file(nc_file.path))
+        print(nc_file.path.name)
+        update_nc_file(nc_file)
 
 
 if __name__ == "__main__":
