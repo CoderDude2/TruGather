@@ -218,11 +218,47 @@ def delete_nc_file(nc_file: NCFile) -> None:
 
     if not file_id:
         return
-    
+
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
         cur.execute("DELETE from errors WHERE nc_file_id = ?", (file_id,))
         cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (file_id,))
+
+
+def is_gathered(nc_file: NCFile) -> bool:
+    file_id:int|None = get_file_id(nc_file)
+
+    if not file_id:
+        return False
+
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+
+        res = cur.execute(
+            "SELECT nc_file_id FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,)
+        )
+        
+        if not res.fetchone():
+            return False
+        return True
+
+
+def gather_nc_file(nc_file: NCFile) -> None:
+    file_id: int | None = get_file_id(nc_file)
+    gathered_path: Path = ALL_FOLDER / nc_file.path.name
+
+    shutil.copy2(nc_file.path.resolve(), gathered_path.resolve())
+
+    if not file_id:
+        return
+
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        cur.execute("INSERT INTO gathered_nc_files (gathered_nc_file_path, nc_file_id) VALUES (?, ?)",
+                    (
+                        str(gathered_path.resolve()),
+                        file_id
+                    ))
 
 
 def update_nc_file(nc_file: NCFile) -> None:
