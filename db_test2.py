@@ -212,18 +212,50 @@ def add_to_database(file_path: Path) -> None:
             )
         con.commit()
 
-def update_nc_file(nc_file:NCFile) -> None:
+
+def update_nc_file(nc_file: NCFile) -> None:
     # TODO: Check file for errors and remove any that no longer exist.
+    file_id: int | None = get_file_id(nc_file)
+
+    if not file_id:
+        return
+
+    nc_errors: tuple[NCError, ...] = get_errors(nc_file)
+    errors: tuple[NCError, ...] = check_file(nc_file.path)
+
+    errors_to_remove: list[NCError] = []
+    errors_to_add: list[NCError] = []
+
+    for error in errors:
+        if error not in nc_errors:
+            errors_to_add.append(error)
+
+    for nc_error in nc_errors:
+        if nc_error not in errors:
+            errors_to_remove.append(nc_error)
+
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
+
+        cur.executemany(
+            "INSERT OR IGNORE INTO errors (error_type, error_msg, nc_file_id) VALUES (?, ?, ?)",
+            [(e.error_type.value, e.error_msg, file_id) for e in errors_to_add],
+        )
+
+        cur.executemany(
+            "DELETE FROM errors WHERE error_type = ? AND error_msg = ? AND nc_file_id = ?",
+            [(e.error_type.value, e.error_msg, file_id) for e in errors_to_remove],
+        )
+
         cur.execute(
-            "UPDATE nc_files SET nc_file_modified_time = ? WHERE nc_file_path = ?",
+            "UPDATE nc_files SET nc_file_modified_time = ? WHERE nc_file_id = ?",
             (
                 nc_file.path.stat().st_mtime,
-                str(nc_file.path.resolve()),
+                file_id,
             ),
         )
         con.commit()
+
 
 def is_tracked(file_path: Path) -> bool:
     with sqlite3.connect(DB_FILE) as con:
@@ -252,6 +284,20 @@ def get_all_nc_files() -> list[NCFile]:
         return nc_files
 
 
+def get_file_id(nc_file: NCFile) -> int | None:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        file_id = cur.execute(
+            "SELECT nc_file_id FROM nc_files WHERE nc_file_path = ?",
+            (str(nc_file.path.resolve()),),
+        ).fetchone()
+
+        if not file_id:
+            return None
+
+        return file_id[0]
+
+
 def get_errors(nc_file: NCFile) -> tuple[NCError, ...]:
     errors: list[NCError] = []
     with sqlite3.connect(DB_FILE) as con:
@@ -263,10 +309,13 @@ def get_errors(nc_file: NCFile) -> tuple[NCError, ...]:
 
         file_id: int | None = file_id_result[0]
         if file_id:
-            results = cur.execute("SELECT error_type, error_msg FROM errors WHERE nc_file_id = ?", (file_id,))
+            results = cur.execute(
+                "SELECT error_type, error_msg FROM errors WHERE nc_file_id = ?",
+                (file_id,),
+            )
             for row in results:
                 errors.append(NCError(ErrorType(row[0]), row[1]))
-        
+
     return tuple(errors)
 
 
@@ -294,3 +343,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    for file in get_all_nc_files():
+        print(file, get_errors(file))
