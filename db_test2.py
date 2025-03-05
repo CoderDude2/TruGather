@@ -213,8 +213,19 @@ def add_to_database(file_path: Path) -> None:
         con.commit()
 
 
+def delete_nc_file(nc_file: NCFile) -> None:
+    file_id: int | None = get_file_id(nc_file)
+
+    if not file_id:
+        return
+    
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        cur.execute("DELETE from errors WHERE nc_file_id = ?", (file_id,))
+        cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (file_id,))
+
+
 def update_nc_file(nc_file: NCFile) -> None:
-    # TODO: Check file for errors and remove any that no longer exist.
     file_id: int | None = get_file_id(nc_file)
 
     if not file_id:
@@ -332,6 +343,10 @@ def get_modified_files() -> list[NCFile]:
 def main() -> None:
     init_db()
 
+    for nc_file in get_all_nc_files():
+        if not nc_file.path.exists():
+            delete_nc_file(nc_file)
+
     for file in get_nc_files(NC_FOLDER):
         if not is_tracked(file):
             add_to_database(file)
@@ -345,3 +360,10 @@ if __name__ == "__main__":
     main()
     for file in get_all_nc_files():
         print(file, get_errors(file))
+
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+
+        res = cur.execute("SELECT * FROM errors")
+        for row in res.fetchall():
+            print(row)
