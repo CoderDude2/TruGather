@@ -12,8 +12,8 @@ asc_folder_regex = re.compile(r"\d+.\d+_ASC_\((\d+)\)")
 folder_regex = re.compile(r"(\d+) ?\((\d+)?\) ?([A-Za-z\+ ]+)?")
 
 BASE_DIR: Path = Path(__file__).resolve().parent
-NC_FOLDER: Path = BASE_DIR / "nc"
-ALL_FOLDER: Path = NC_FOLDER / "ALL"
+NC_FOLDER: Path = Path(r'\\192.168.1.100\Trubox\####ERP_RM####\Y2025\M03\D06\1. CAM\3. NC files')
+ALL_FOLDER: Path = BASE_DIR / "nc" / "ALL"
 
 DB_FILE: Path = BASE_DIR / "data.db"
 
@@ -521,7 +521,8 @@ def main() -> None:
         except FileNotFoundError:
             if not ALL_FOLDER.exists():
                 ALL_FOLDER.mkdir()
-
+        except OSError as e:
+            print(f"WinError: {e.winerror}\n", f'\n{e}')
 
 if __name__ == "__main__":
     main()
