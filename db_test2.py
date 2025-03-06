@@ -222,26 +222,47 @@ def add_to_database(file_path: Path) -> None:
                     ],
                 )
 
-                results = cur.execute("SELECT nc_file_path FROM nc_files WHERE nc_file_name = ? AND nc_file_id != ?", (file_path.name, file_id))
+                results = cur.execute(
+                    "SELECT nc_file_path FROM nc_files WHERE nc_file_name = ? AND nc_file_id != ?",
+                    (file_path.name, file_id),
+                )
 
                 if results.fetchone():
-                    cur.execute("INSERT INTO duplicates (nc_file_id) VALUES (?)", (file_id,))
-            print(f'{file_path} added to database')
+                    cur.execute(
+                        "INSERT INTO duplicates (nc_file_id) VALUES (?)", (file_id,)
+                    )
+            print(f"{file_path} added to database")
             con.commit()
     except PermissionError:
         print("File is being used by another process")
         pass
+
+
+def get_duplicates() -> list[NCFile]:
+    with sqlite3.connect(DB_FILE) as con:
+        cur: sqlite3.Cursor = con.cursor()
+        duplicates = [
+            NCFile(Path(row[0]), row[1])
+            for row in cur.execute(
+                "SELECT nc_file_path, nc_file_modified_time FROM nc_files JOIN duplicates USING (nc_file_id)"
+            ).fetchall()
+        ]
+        return duplicates
+
 
 def is_duplicate(nc_file: NCFile) -> bool:
     file_id = get_file_id(nc_file)
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
 
-        res = cur.execute("SELECT nc_file_id FROM duplicates WHERE nc_file_id = ?", (file_id,))
+        res = cur.execute(
+            "SELECT nc_file_id FROM duplicates WHERE nc_file_id = ?", (file_id,)
+        )
 
         if res.fetchone():
             return True
         return False
+
 
 def delete_nc_file(nc_file: NCFile) -> None:
     file_id: int | None = get_file_id(nc_file)
@@ -258,25 +279,32 @@ def delete_nc_file(nc_file: NCFile) -> None:
         cur.execute("DELETE FROM errors WHERE nc_file_id = ?", (file_id,))
         cur.execute("DELETE FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,))
         cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (file_id,))
+        print(f"{nc_file.path} removed from database")
 
-        duplicate_ids = [row[0] for row in cur.execute("SELECT nc_file_id FROM nc_files JOIN duplicates USING(nc_file_id) WHERE nc_file_name = ?", (nc_file.path.name,)).fetchall()]
-        
+        duplicate_ids = [
+            row[0]
+            for row in cur.execute(
+                "SELECT nc_file_id FROM nc_files JOIN duplicates USING(nc_file_id) WHERE nc_file_name = ?",
+                (nc_file.path.name,),
+            ).fetchall()
+        ]
+
         if not duplicate_ids:
             return
-        
+
         for duplicate_id in duplicate_ids:
             errors = cur.execute(
-                    "SELECT error_type, error_msg FROM errors WHERE nc_file_id = ?",
-                    (duplicate_id,),
-                )
+                "SELECT error_type, error_msg FROM errors WHERE nc_file_id = ?",
+                (duplicate_id,),
+            )
             if not errors.fetchone():
-                cur.execute("DELETE FROM duplicates WHERE nc_file_id = ?", (duplicate_id,))
+                cur.execute(
+                    "DELETE FROM duplicates WHERE nc_file_id = ?", (duplicate_id,)
+                )
                 print("Removed file without errors")
                 return
         print("Removed file with errors")
         cur.execute("DELETE FROM duplicates WHERE nc_file_id = ?", (duplicate_ids[0],))
-    
-    print(f'{nc_file.path} removed from database')
 
 
 def is_gathered(nc_file: NCFile) -> bool:
@@ -309,7 +337,7 @@ def gather_nc_file(nc_file: NCFile) -> None:
                 "INSERT INTO gathered_nc_files (gathered_nc_file_path, nc_file_id) VALUES (?, ?)",
                 (str(gathered_path.resolve()), file_id),
             )
-        print(f'{nc_file.path} gathered')
+        print(f"{nc_file.path} gathered")
     except sqlite3.IntegrityError:
         print(f"{nc_file.path} is a duplicate")
 
@@ -385,6 +413,7 @@ def is_tracked(file_path: Path) -> bool:
             return False
         return True
 
+
 def get_all_nc_files() -> list[NCFile]:
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
@@ -454,40 +483,44 @@ def get_modified_files() -> list[NCFile]:
 
 def main() -> None:
     init_db()
-    for file in get_nc_files(NC_FOLDER):
-        if not is_tracked(file):
-            # TODO: Change add_to_database to check the file for errors and check if it is a duplicate
-            add_to_database(file)
+    run = True
+    while run:
+        try:
+            for file in get_nc_files(NC_FOLDER):
+                if not is_tracked(file):
+                    add_to_database(file)
 
-    for nc_file in get_all_nc_files():
-        if not nc_file.path.exists():
-            delete_nc_file(nc_file)
-            continue
+            for nc_file in get_all_nc_files():
+                if not nc_file.path.exists():
+                    delete_nc_file(nc_file)
+                    continue
 
-        if is_modified(nc_file):
-            print(nc_file, "is modified")
-            update_nc_file(nc_file)
+                if is_modified(nc_file):
+                    print(nc_file, "is modified")
+                    update_nc_file(nc_file)
 
-        # print(f'Name: {nc_file.path.name}')
-        # print(f'Path: {nc_file.path}')
-        # print(f'Is Duplicate: {is_duplicate(nc_file)}')
-        # print()
-        # print('Duplicates:')
-        # [print(f'\t{i}') for i in get_duplicates(nc_file)]
-        # print('Errors:')
-        # [print(f'\t{e}') for e in get_errors(nc_file)]
-        # print()
+                if is_duplicate(nc_file):
+                    continue
 
-        # if not is_gathered(nc_file) and not get_errors(nc_file):
-        #     gather_nc_file(nc_file)
+                if not is_gathered(nc_file) and not get_errors(nc_file):
+                    gather_nc_file(nc_file)
 
-        # if is_gathered(nc_file) and get_errors(nc_file):
-        #     remove_nc_from_gather(nc_file)
+                if is_gathered(nc_file) and get_errors(nc_file):
+                    remove_nc_from_gather(nc_file)
 
-        # if is_gathered(nc_file) and not (ALL_FOLDER / nc_file.path.name).exists():
-        #     shutil.copy2(
-        #         nc_file.path.resolve(), (ALL_FOLDER / nc_file.path.name).resolve()
-        #     )
+                if (
+                    is_gathered(nc_file)
+                    and not (ALL_FOLDER / nc_file.path.name).exists()
+                ):
+                    shutil.copy2(
+                        nc_file.path.resolve(),
+                        (ALL_FOLDER / nc_file.path.name).resolve(),
+                    )
+        except KeyboardInterrupt:
+            run = False
+        except FileNotFoundError:
+            if not ALL_FOLDER.exists():
+                ALL_FOLDER.mkdir()
 
 
 if __name__ == "__main__":
@@ -496,7 +529,9 @@ if __name__ == "__main__":
     with sqlite3.connect(DB_FILE) as con:
         cur: sqlite3.Cursor = con.cursor()
 
-        res = cur.execute("SELECT nc_file_path FROM nc_files JOIN duplicates USING(nc_file_id)")
+        res = cur.execute(
+            "SELECT nc_file_path FROM nc_files JOIN duplicates USING(nc_file_id)"
+        )
         print("Duplicates:")
-        for row in res.fetchall():
-            print(Path(row[0]))
+        for duplicate in get_duplicates():
+            print(duplicate)
