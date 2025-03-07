@@ -228,6 +228,26 @@ class FileManager:
 
         return file_id[0]
     
+    def is_tracked(self, file_path: Path) -> bool:
+        res = self.cur.execute(
+            "SELECT nc_file_id FROM nc_files WHERE nc_file_path = ?", (str(file_path),)
+        )
+        if not res.fetchone():
+            return False
+        return True
+
+
+    def get_all_nc_files(self) -> list[NCFile]:
+        nc_files: list[NCFile] = []
+
+        results = self.cur.execute(
+            "SELECT nc_file_path, nc_file_modified_time FROM nc_files"
+        )
+
+        for row in results.fetchall():
+            nc_files.append(NCFile(Path(row[0]), row[1]))
+        return nc_files
+    
     def add_to_database(self, file_path: Path) -> None:
         try:
             self.cur.execute(
@@ -307,7 +327,7 @@ class FileManager:
     def get_modified_files(self) -> list[NCFile]:
         modified_nc_files: list[NCFile] = []
 
-        for nc_file in get_all_nc_files():
+        for nc_file in self.get_all_nc_files():
             if nc_file.path.stat().st_mtime != nc_file.modified_time:
                 modified_nc_files.append(nc_file)
 
