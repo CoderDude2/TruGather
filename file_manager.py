@@ -7,6 +7,7 @@ import math
 import sqlite3
 import shutil
 import re
+import threading
 
 BASE_DIR: Path = Path(__file__).resolve().parent
 
@@ -458,50 +459,112 @@ class FileManager:
         return modified_nc_files
 
 
+class FileProcessor:
+    def __init__(self) -> None:
+        self.processing_event = threading.Event()
+        self.gathering_event = threading.Event()
+        
+        self.gathering_event.clear()
+        self.processing_event.set()
+        self.process_files_thread = threading.Thread(
+            target=self.process_files,
+            args=(
+                self.processing_event,
+                self.gathering_event,
+            ),
+        )
+        self.process_files_thread.start()
+
+    def gather_all_files(self) -> None:
+        fm = FileManager()
+        for nc_file in fm.get_all_nc_files():
+            if fm.is_duplicate(nc_file):
+                continue
+            if not fm.is_gathered(nc_file) and not fm.get_errors(nc_file):
+                fm.gather_nc_file(nc_file)
+
+            if fm.is_gathered(nc_file) and fm.get_errors(nc_file):
+                fm.remove_nc_from_gather(nc_file)
+
+            if (
+                fm.is_gathered(nc_file)
+                and not (ALL_FOLDER / nc_file.path.name).exists()
+            ):
+                shutil.copy2(
+                    nc_file.path.resolve(),
+                    (ALL_FOLDER / nc_file.path.name).resolve(),
+                )
+        fm.con.close()
+
+    def process_files(
+        self, processing_event: threading.Event, gathering_event: threading.Event
+    ) -> None:
+        fm = FileManager()
+
+        while processing_event.is_set():
+            try:
+                for file in get_nc_files(NC_FOLDER):
+                    if not fm.is_tracked(file):
+                        fm.add_to_database(file)
+
+                for nc_file in fm.get_all_nc_files():
+                    if not nc_file.path.exists():
+                        fm.delete_nc_file(nc_file)
+                        continue
+
+                    if fm.is_modified(nc_file):
+                        print(nc_file, "is modified")
+                        fm.update_nc_file(nc_file)
+                    
+                    if fm.is_gathered(nc_file) and fm.get_errors(nc_file):
+                        fm.remove_nc_from_gather(nc_file)
+
+                    if fm.is_duplicate(nc_file):
+                        continue
+
+                    if gathering_event.is_set():
+                        if not fm.is_gathered(nc_file) and not fm.get_errors(nc_file):
+                            fm.gather_nc_file(nc_file)
+                        
+                        if (
+                            fm.is_gathered(nc_file)
+                            and not (ALL_FOLDER / nc_file.path.name).exists()
+                        ):
+                            shutil.copy2(
+                                nc_file.path.resolve(),
+                                (ALL_FOLDER / nc_file.path.name).resolve(),
+                            )
+            except FileNotFoundError:
+                if not ALL_FOLDER.exists():
+                    ALL_FOLDER.mkdir()
+            except OSError as e:
+                print(f"WinError: {e.winerror}\n", f"\n{e}")
+        fm.con.close()
+
+    def start_gathering(self) -> None:
+        self.gathering_event.set()
+
+    def stop_gathering(self) -> None:
+        self.gathering_event.clear()
+
+    def stop_processing(self) -> None:
+        self.processing_event.clear()
+
+
 def main() -> None:
-    fm = FileManager()
+    fp = FileProcessor()
+    while True:
+        inp = input()
 
-    run = True
-    while run:
-        try:
-            for file in get_nc_files(NC_FOLDER):
-                if not fm.is_tracked(file):
-                    fm.add_to_database(file)
-
-            for nc_file in fm.get_all_nc_files():
-                if not nc_file.path.exists():
-                    fm.delete_nc_file(nc_file)
-                    continue
-
-                if fm.is_modified(nc_file):
-                    print(nc_file, "is modified")
-                    fm.update_nc_file(nc_file)
-
-                if fm.is_duplicate(nc_file):
-                    continue
-
-                if not fm.is_gathered(nc_file) and not fm.get_errors(nc_file):
-                    fm.gather_nc_file(nc_file)
-
-                if fm.is_gathered(nc_file) and fm.get_errors(nc_file):
-                    fm.remove_nc_from_gather(nc_file)
-
-                if (
-                    fm.is_gathered(nc_file)
-                    and not (ALL_FOLDER / nc_file.path.name).exists()
-                ):
-                    shutil.copy2(
-                        nc_file.path.resolve(),
-                        (ALL_FOLDER / nc_file.path.name).resolve(),
-                    )
-        except KeyboardInterrupt:
-            run = False
-        except FileNotFoundError:
-            if not ALL_FOLDER.exists():
-                ALL_FOLDER.mkdir()
-        except OSError as e:
-            print(e)
-            # print(f"WinError: {e.winerror}\n", f"\n{e}")
+        if inp == "gather on":
+            fp.start_gathering()
+        elif inp == "gather off":
+            fp.stop_gathering()
+        elif inp == "end":
+            fp.stop_processing()
+            exit()
+        else:
+            print("Invalid Input")
 
 
 if __name__ == "__main__":
