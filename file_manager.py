@@ -279,6 +279,20 @@ class FileManager:
             if res.fetchone():
                 return True
             return False
+    
+    def get_errors(self, nc_file: NCFile) -> tuple[NCError, ...]:
+        file_id = self.get_file_id(nc_file)
+        errors: list[NCError] = []
+
+        if file_id:
+            results = self.cur.execute(
+                "SELECT error_type, error_msg FROM errors WHERE nc_file_id = ?",
+                (file_id,),
+            )
+            for row in results:
+                errors.append(NCError(ErrorType(row[0]), row[1]))
+
+        return tuple(errors)
 
 
 if __name__ == "__main__":
