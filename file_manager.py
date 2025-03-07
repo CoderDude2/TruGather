@@ -293,6 +293,25 @@ class FileManager:
                 errors.append(NCError(ErrorType(row[0]), row[1]))
 
         return tuple(errors)
+    
+
+    def is_modified(self, nc_file: NCFile) -> bool:
+        file_id = self.get_file_id(nc_file)
+        res = self.cur.execute(
+            "SELECT nc_file_modified_time FROM nc_files WHERE nc_file_id = ?",
+            (file_id,),
+        ).fetchone()
+        return nc_file.path.stat().st_mtime != res[0]
+
+
+    def get_modified_files(self) -> list[NCFile]:
+        modified_nc_files: list[NCFile] = []
+
+        for nc_file in get_all_nc_files():
+            if nc_file.path.stat().st_mtime != nc_file.modified_time:
+                modified_nc_files.append(nc_file)
+
+        return modified_nc_files
 
 
 if __name__ == "__main__":
