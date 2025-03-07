@@ -63,12 +63,6 @@ class App(tk.Tk):
 
         self.config(menu=self.menu_bar)
 
-    # def gather_prg(self):
-    #     self.fm.copy_all_valid_files()
-
-    # def gather_asc(self):
-    #     self.fm.copy_asc_files()
-
     def on_auto_gather_toggle(self):
         if self.auto_check.get():
             self.fp.start_gathering()
