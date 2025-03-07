@@ -139,6 +139,7 @@ class InfoWidget(tk.Frame):
                     self.duplicates.append(GUIDuplicate(duplicate))
 
                 self.render()
+        fm.con.close()
     
     def close_connection(self):
         self.stop_thread_event.set()

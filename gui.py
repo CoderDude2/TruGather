@@ -13,7 +13,7 @@ class MenuBar(tk.Menu):
         super().__init__(master)
 
         self.file_menu = tk.Menu(self, tearoff=False)
-        self.file_menu.add_command(label='   Exit   ')
+        self.file_menu.add_command(label='   Exit   ', command=master.on_close)
 
         self.help_menu = tk.Menu(self, tearoff=False)
         self.help_menu.add_command(label='   View Help   ', command=self.on_help_option)
@@ -38,7 +38,7 @@ class App(tk.Tk):
         self.iconbitmap(os.path.join(ROOT_DIR, "resources", "icons", "tru-gather.ico"))
 
         self.title("TruGather")
-        # self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.menu_bar = MenuBar(self)
 
@@ -88,10 +88,10 @@ class App(tk.Tk):
     #         self.gather_prg_button.configure(state=tk.DISABLED)
     #         self.gather_asc_button.configure(state=tk.DISABLED)
 
-    # def on_close(self):
-    #     self.stop_event.set()
-    #     self.fm.save(os.path.join(ROOT_DIR, "data.json"))
-    #     self.destroy()
+    def on_close(self):
+        self.info_widget.close_connection()
+        # self.fm.save(os.path.join(ROOT_DIR, "data.json"))
+        self.destroy()
 
     # def auto_gather(self, disable_event:threading.Event, enabled_event:threading.Event):
     #     while True:
