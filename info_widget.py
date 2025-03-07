@@ -1,9 +1,13 @@
-import os
-import tkinter as tk
-from tkinter import ttk
 from dataclasses import dataclass
-from file_manager import FileManager, NCError, NCFile
+from pathlib import Path
+from tkinter import ttk
+import tkinter as tk
 import subprocess
+import os
+import threading
+import sqlite3
+
+from file_manager import FileManager, NCError, NCFile, ErrorType, DB_FILE
 
 @dataclass
 class GUIError:
@@ -15,12 +19,22 @@ class GUIError:
     def __eq__(self, other):
         return self.file == other.file and self.location == other.location and self.issue_type == other.issue_type
 
+@dataclass
+class GUIDuplicate:
+    nc_file: NCFile
+    line_start:int = 0
+    line_end:int = 0
+
 class InfoWidget(tk.Frame):
     def __init__(self, master=None) -> None:
         super().__init__(master)
         self.text = tk.Text(self, wrap='none', state='normal', font="Arial 11")
 
+        self.stop_thread_event = threading.Event()
+        threading.Thread(target=self.update_info_widget, daemon=True).start()
+
         self.gui_errors: list[GUIError] = []
+        self.duplicates: list[GUIDuplicate] = []
         
         self.text['state'] = 'disabled'
 
@@ -30,9 +44,9 @@ class InfoWidget(tk.Frame):
         self.xs = ttk.Scrollbar(self, orient='horizontal', command=self.text.xview)
         self.text['xscrollcommand'] = self.xs.set
 
-        self.text.grid(column=0, row=0, sticky='nsew')
-        self.ys.grid(column=1, row=0, sticky='ns')
-        self.xs.grid(column=0, row=1, sticky='ew')
+        self.text.grid (row=0, column=0, sticky='nsew')
+        self.ys.grid   (row=0, column=1, sticky='ns')
+        self.xs.grid   (row=1, column=0, sticky='ew')
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -43,14 +57,22 @@ class InfoWidget(tk.Frame):
             self.text.bind("<Button-2>", self.on_right_click)
 
     def get_error_by_pos(self, x, y) -> GUIError|None:
-        line = int(self.text.index(f'@{x},{y}').split('.')[0])
+        line: int = int(self.text.index(f'@{x},{y}').split('.')[0])
 
-        for issue in self.issue_list:
-            if line >= issue.line_start and line < issue.line_end:
-                return issue
+        for gui_error in self.gui_errors:
+            if line >= gui_error.line_start and line < gui_error.line_end:
+                return gui_error
+        return None
+
+    def get_duplicate_by_pos(self, x, y) -> GUIDuplicate|None:
+        line: int = int(self.text.index(f'@{x},{y}').split('.')[0])
+
+        for gui_duplicate in self.duplicates:
+            if line >= gui_duplicate.line_start and line < gui_duplicate.line_end:
+                return gui_duplicate
         return None
         
-    def render(self):
+    def render(self) -> None:
         new_text = tk.Text(self,wrap='none', font="Arial 11", state='disabled', cursor='arrow')
         if os.name == 'nt':
             new_text.bind("<Button-3>", self.on_right_click)
@@ -70,107 +92,85 @@ class InfoWidget(tk.Frame):
         new_text['xscrollcommand'] = self.xs.set
 
         new_text['state'] = 'normal'
-        for i in self.issue_list:
-            match i.issue_type:
-                case IssueType.SUBPROGRAM_0_ERR:
-                    i.line_start = int(new_text.index('end-1l').split('.')[0])
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    new_text.insert('end'," Error: $0 Subprogram Missing\n", ('error', 'issue_message',))
-                    new_text.insert('end', f' File: {i.file} \n', ('error',))
-                    new_text.insert('end', f' Location: {i.location} \n', ('error',))
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    i.line_end = int(new_text.index('end-1l').split('.')[0])
-                case IssueType.SUBPROGRAM_1_ERR:
-                    i.line_start = int(new_text.index('end-1l').split('.')[0])
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    new_text.insert('end'," Error: $1 Subprogram Missing\n", ('error', 'issue_message',))
-                    new_text.insert('end', f' File: {i.file} \n', ('error',))
-                    new_text.insert('end', f' Location: {i.location} \n', ('error',))
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    i.line_end = int(new_text.index('end-1l').split('.')[0])
-                case IssueType.SUBPROGRAM_2_ERR:
-                    i.line_start = int(new_text.index('end-1l').split('.')[0])
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    new_text.insert('end'," Error: $2 Subprogram Missing\n", ('error', 'issue_message',))
-                    new_text.insert('end', f' File: {i.file} \n', ('error',))
-                    new_text.insert('end', f' Location: {i.location} \n', ('error',))
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    i.line_end = int(new_text.index('end-1l').split('.')[0])
-                case IssueType.INVALID_NAME_ERR:
-                    i.line_start = int(new_text.index('end-1l').split('.')[0])
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    new_text.insert('end'," Error: Invalid Name\n", ('error', 'issue_message',))
-                    new_text.insert('end', f' File: {i.file} \n', ('error',))
-                    new_text.insert('end', f' Location: {i.location} \n', ('error',))
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    i.line_end = int(new_text.index('end-1l').split('.')[0])
-                case IssueType.PART_LENGTH_ERR:
-                    i.line_start = int(new_text.index('end-1l').split('.')[0])
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    new_text.insert('end'," Error: Part-Length does not equal Cut-off\n", ('error', 'issue_message',))
-                    new_text.insert('end', f' File: {i.file} \n', ('error',))
-                    new_text.insert('end', f' Location: {i.location} \n', ('error',))
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    i.line_end = int(new_text.index('end-1l').split('.')[0])
-                case IssueType.MISSING_UG_VALUES_ERR:
-                    i.line_start = int(new_text.index('end-1l').split('.')[0])
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    new_text.insert('end'," Error: Missing one or more UG values\n", ('error', 'issue_message',))
-                    new_text.insert('end', f' File: {i.file} \n', ('error',))
-                    new_text.insert('end', f' Location: {i.location} \n', ('error',))
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    i.line_end = int(new_text.index('end-1l').split('.')[0])
-                case IssueType.INTERNAL_NAME_ERR:
-                    i.line_start = int(new_text.index('end-1l').split('.')[0])
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    new_text.insert('end'," Error: File name and internal name don't match\n", ('error', 'issue_message',))
-                    new_text.insert('end', f' File: {i.file} \n', ('error',))
-                    new_text.insert('end', f' Location: {i.location} \n', ('error',))
-                    new_text.insert('end', '\n', ('error', 'spacer2'))
-                    i.line_end = int(new_text.index('end-1l').split('.')[0])
-                case IssueType.DUPLICATE_PRG_ERR:
-                    i.line_start = int(new_text.index('end-1l').split('.')[0])
-                    new_text.insert('end', '\n', ('warning', 'spacer2'))
-                    new_text.insert('end'," Warning: Duplicate PRG\n", ('warning', 'issue_message',))
-                    new_text.insert('end', f' File: {i.file} \n', ('warning',))
-                    new_text.insert('end', f' Location: {i.location} \n', ('warning',))
-                    new_text.insert('end', '\n', ('warning', 'spacer2'))
-                    i.line_end = int(new_text.index('end-1l').split('.')[0])
+
+        for gui_error in self.gui_errors:
+            gui_error.line_start = int(new_text.index('end-1l').split('.')[0])
+            new_text.insert('end', '\n', ('error', 'spacer2'))
+            new_text.insert('end',f" {' '.join(gui_error.nc_error.error_type.name.split('_')).title()} Error: {gui_error.nc_error.error_msg}\n", ('error', 'issue_message',))
+            new_text.insert('end', f' File: {gui_error.nc_file.path.name} \n', ('error',))
+            new_text.insert('end', f' Location: {gui_error.nc_file.path.resolve()} \n', ('error',))
+            new_text.insert('end', '\n', ('error', 'spacer2'))
+            gui_error.line_end = int(new_text.index('end-1l').split('.')[0])
             new_text.insert('end', '\n', ('spacer'))
+        
+        for duplicate in self.duplicates:
+            duplicate.line_start = int(new_text.index('end-1l').split('.')[0])
+            new_text.insert('end', '\n', ('warning', 'spacer2'))
+            new_text.insert('end'," Warning: Duplicate PRG\n", ('warning', 'issue_message',))
+            new_text.insert('end', f' File: {duplicate.nc_file.path.name} \n', ('warning',))
+            new_text.insert('end', f' Location: {duplicate.nc_file.path.resolve()} \n', ('warning',))
+            new_text.insert('end', '\n', ('warning', 'spacer2'))
+            duplicate.line_end = int(new_text.index('end-1l').split('.')[0])
+            new_text.insert('end', '\n', ('spacer'))
+        new_text.insert('end', '\n', ('spacer'))
         new_text['state'] = 'disabled'
 
         self.text.destroy()
         self.text = new_text
-        new_text.grid(column=0, row=0, sticky='nsew')
-        self.grid(row=0, column=1, sticky='nsew')
+        self.text.grid(column=0, row=0, sticky='nsew')
     
-    def updateErrors(self, fm:FileManager):
-        self.issue_list = []
-        for entry in fm.processed_files:
-            if len(fm.processed_files[entry]['errors']) > 0:
-                for error in fm.processed_files[entry]['errors']:
-                    gui_error = GUIError(entry, fm.processed_files[entry]['location'], error)
-                    if gui_error not in self.issue_list:
-                        self.issue_list.append(gui_error)
-            if len(fm.processed_files[entry]['duplicates']) > 0:
-                for duplicate in fm.processed_files[entry]['duplicates']:
-                    for error in duplicate['errors']:
-                        gui_error = GUIError(entry, duplicate['location'], error)
-                        if gui_error not in self.issue_list:
-                            self.issue_list.append(gui_error)
-        self.render()
+    def update_info_widget(self) -> None:
+        fm:FileManager = FileManager()
+        previous_data_value:int = 0
+        while not self.stop_thread_event.is_set():
+            data_version = fm.cur.execute("PRAGMA data_version").fetchone()
+            if data_version != previous_data_value:
+                previous_data_value = data_version
+                self.gui_errors.clear()
+                self.duplicates.clear()
 
-    def on_right_click(self, event):
-        clicked_gui_error:GUIError = self.get_issue_by_pos(event.x, event.y)
+                results = fm.cur.execute("SELECT nc_file_path, nc_file_modified_time, error_type, error_msg FROM nc_files JOIN errors USING (nc_file_id)")
+                for row in results:
+                    nc_file: NCFile = NCFile(Path(row[0]), row[1])
+                    nc_error: NCError = NCError(ErrorType(row[2]), row[3])
+                    self.gui_errors.append(GUIError(nc_file, nc_error))
+                
+                for duplicate in fm.get_duplicates():
+                    self.duplicates.append(GUIDuplicate(duplicate))
+
+                self.render()
+    
+    def close_connection(self):
+        self.stop_thread_event.set()
+
+    def on_right_click(self, event) -> None:
+        clicked_gui_error:GUIError|None = self.get_error_by_pos(event.x, event.y)
+        clicked_gui_duplicate:GUIDuplicate|None = self.get_duplicate_by_pos(event.x, event.y)
 
         rightClickMenu = tk.Menu(self, tearoff=False)
+
         if clicked_gui_error:
-            rightClickMenu.add_command(label="Open File Location", command=lambda:(self.open_file_location(clicked_gui_error.location)))
-        rightClickMenu.tk_popup(event.x_root, event.y_root)
+            rightClickMenu.add_command(label="Open File Location", command=lambda:(self.open_file_location(clicked_gui_error.nc_file.path)))
+            rightClickMenu.tk_popup(event.x_root, event.y_root)
+        
+        if clicked_gui_duplicate:
+            rightClickMenu.add_command(label="Open File Location", command=lambda:(self.open_file_location(clicked_gui_duplicate.nc_file.path)))
+            rightClickMenu.tk_popup(event.x_root, event.y_root)
     
-    def open_file_location(self, path):
+    def open_file_location(self, path) -> None:
         if path:
             if os.name == 'nt':
-                subprocess.Popen(f'explorer {path}')
+                subprocess.Popen(f'explorer /select, {path}')
             else:
                 subprocess.call("open", "-R", path)
+
+
+def main() -> None:
+    root = tk.Tk()
+    info = InfoWidget(root)
+    info.pack(expand=True, fill=tk.BOTH)
+    root.mainloop()
+
+    
+if __name__ == "__main__":
+    main()
