@@ -305,8 +305,7 @@ def delete_nc_file(nc_file: NCFile) -> None:
                 return
         print("Removed file with errors")
         cur.execute("DELETE FROM duplicates WHERE nc_file_id = ?", (duplicate_ids[0],))
-
-
+        
 def is_gathered(nc_file: NCFile) -> bool:
     file_id: int | None = get_file_id(nc_file)
 

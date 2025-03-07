@@ -277,6 +277,133 @@ class FileManager:
             self.con.commit()
         except PermissionError:
             print("File is being used by another process")
+
+    def delete_nc_file(self, nc_file: NCFile) -> None:
+        file_id = self.get_file_id(nc_file)
+        gathered_path: Path = ALL_FOLDER / nc_file.path.name
+
+        if not file_id:
+            return
+
+        if gathered_path.exists():
+            gathered_path.unlink()
+
+        self.cur.execute("DELETE FROM errors WHERE nc_file_id = ?", (file_id,))
+        self.cur.execute("DELETE FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,))
+        self.cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (file_id,))
+        print(f"{nc_file.path} removed from database")
+
+        duplicate_ids = [
+            row[0]
+            for row in self.cur.execute(
+                "SELECT nc_file_id FROM nc_files JOIN duplicates USING(nc_file_id) WHERE nc_file_name = ?",
+                (nc_file.path.name,),
+            ).fetchall()
+        ]
+
+        if not duplicate_ids:
+            self.con.commit()
+            return
+
+        for duplicate_id in duplicate_ids:
+            errors = self.cur.execute(
+                "SELECT error_type, error_msg FROM errors WHERE nc_file_id = ?",
+                (duplicate_id,),
+            )
+            if not errors.fetchone():
+                self.cur.execute(
+                    "DELETE FROM duplicates WHERE nc_file_id = ?", (duplicate_id,)
+                )
+                print("Removed file without errors")
+                self.con.commit()
+                return
+        print("Removed file with errors")
+        self.cur.execute("DELETE FROM duplicates WHERE nc_file_id = ?", (duplicate_ids[0],))
+        self.con.commit()
+
+
+    def is_gathered(self, nc_file: NCFile) -> bool:
+        file_id = self.get_file_id(nc_file)
+
+        res = self.cur.execute(
+            "SELECT nc_file_id FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,)
+        ).fetchone()
+
+        if not res:
+            return False
+
+        return True
+
+
+    def gather_nc_file(self, nc_file: NCFile) -> None:
+        file_id = self.get_file_id(nc_file)
+        gathered_path: Path = ALL_FOLDER / nc_file.path.name
+
+        if not file_id:
+            return
+
+        try:
+            self.cur.execute(
+                "INSERT INTO gathered_nc_files (gathered_nc_file_path, nc_file_id) VALUES (?, ?)",
+                (str(gathered_path.resolve()), file_id),
+            )
+            print(f"{nc_file.path} gathered")
+        except sqlite3.IntegrityError:
+            print(f"{nc_file.path} is a duplicate")
+
+
+    def remove_nc_from_gather(self, nc_file: NCFile) -> None:
+        file_id = self.get_file_id(nc_file)
+        gathered_path: Path = ALL_FOLDER / nc_file.path.name
+
+        if not file_id:
+            return
+
+        if gathered_path.exists():
+            gathered_path.unlink()
+
+        self.cur.execute("DELETE FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,))
+        self.con.commit()
+
+
+    def update_nc_file(self, nc_file: NCFile) -> None:
+        file_id = self.get_file_id(nc_file)
+
+        if not file_id:
+            return
+
+        nc_errors: tuple[NCError, ...] = self.get_errors(nc_file)
+        errors: tuple[NCError, ...] = check_file(nc_file.path)
+
+        errors_to_remove: list[NCError] = []
+        errors_to_add: list[NCError] = []
+
+        for error in errors:
+            if error not in nc_errors:
+                errors_to_add.append(error)
+
+        for nc_error in nc_errors:
+            if nc_error not in errors:
+                errors_to_remove.append(nc_error)
+
+        self.cur.executemany(
+            "INSERT OR IGNORE INTO errors (error_type, error_msg, nc_file_id) VALUES (?, ?, ?)",
+            [(e.error_type.value, e.error_msg, file_id) for e in errors_to_add],
+        )
+
+        self.cur.executemany(
+            "DELETE FROM errors WHERE error_type = ? AND error_msg = ? AND nc_file_id = ?",
+            [(e.error_type.value, e.error_msg, file_id) for e in errors_to_remove],
+        )
+
+        self.cur.execute(
+            "UPDATE nc_files SET nc_file_modified_time = ? WHERE nc_file_id = ?",
+            (
+                nc_file.path.stat().st_mtime,
+                file_id,
+            ),
+        )
+        self.con.commit()
     
     def get_duplicates(self) -> list[NCFile]:
         duplicates = [
@@ -289,16 +416,14 @@ class FileManager:
 
     def is_duplicate(self, nc_file: NCFile) -> bool:
         file_id = self.get_file_id(nc_file)
-        with sqlite3.connect(DB_FILE) as con:
-            cur: sqlite3.Cursor = con.cursor()
 
-            res = cur.execute(
-                "SELECT nc_file_id FROM duplicates WHERE nc_file_id = ?", (file_id,)
-            )
+        res = self.cur.execute(
+            "SELECT nc_file_id FROM duplicates WHERE nc_file_id = ?", (file_id,)
+        )
 
-            if res.fetchone():
-                return True
-            return False
+        if res.fetchone():
+            return True
+        return False
     
     def get_errors(self, nc_file: NCFile) -> tuple[NCError, ...]:
         file_id = self.get_file_id(nc_file)
