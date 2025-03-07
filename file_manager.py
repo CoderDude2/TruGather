@@ -217,6 +217,17 @@ class FileManager:
             )
         )
     
+    def get_file_id(self, nc_file: NCFile) -> int | None:
+        file_id = self.cur.execute(
+            "SELECT nc_file_id FROM nc_files WHERE nc_file_path = ?",
+            (str(nc_file.path.resolve()),),
+        ).fetchone()
+
+        if not file_id:
+            return None
+
+        return file_id[0]
+    
     def add_to_database(self, file_path: Path) -> None:
         try:
             self.cur.execute(
@@ -255,6 +266,19 @@ class FileManager:
             ).fetchall()
         ]
         return duplicates
+
+    def is_duplicate(self, nc_file: NCFile) -> bool:
+        file_id = self.get_file_id(nc_file)
+        with sqlite3.connect(DB_FILE) as con:
+            cur: sqlite3.Cursor = con.cursor()
+
+            res = cur.execute(
+                "SELECT nc_file_id FROM duplicates WHERE nc_file_id = ?", (file_id,)
+            )
+
+            if res.fetchone():
+                return True
+            return False
 
 
 if __name__ == "__main__":
