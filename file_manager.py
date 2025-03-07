@@ -8,9 +8,7 @@ import sqlite3
 import shutil
 import re
 
-
 BASE_DIR: Path = Path(__file__).resolve().parent
-ERP_DIR: Path = Path(r'\\192.168.1.100\Trubox\####ERP_RM####')
 
 prg_regex: re.Pattern = re.compile(r"(\d{4,})([A-Za-z.]+)")
 asc_folder_regex: re.Pattern = re.compile(r"\d+.\d+_ASC_\((\d+)\)")
@@ -26,8 +24,8 @@ def date_as_path(date=None) -> Path:
     return Path(_year, _month, _day)
 
 
-NC_FOLDER: Path = ERP_DIR / date_as_path() / r"1. CAM\3. NC files"
-ALL_FOLDER: Path = BASE_DIR / "nc" / "ALL"
+NC_FOLDER: Path = BASE_DIR / "nc"
+ALL_FOLDER: Path = NC_FOLDER / "ALL"
 
 DB_FILE: Path = BASE_DIR / "data2.db"
 
@@ -156,6 +154,7 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
             errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #105 value"))
     return tuple(errors)
 
+
 def get_nc_files(file_path: Path) -> list[Path]:
     nc_files: list[Path] = []
 
@@ -164,6 +163,7 @@ def get_nc_files(file_path: Path) -> list[Path]:
             nc_files.append(file)
 
     return nc_files
+
 
 class FileManager:
     def __init__(self) -> None:
@@ -216,7 +216,7 @@ class FileManager:
                 "FOREIGN KEY(nc_file_id) REFERENCES nc_files(nc_file_id))"
             )
         )
-    
+
     def get_file_id(self, nc_file: NCFile) -> int | None:
         file_id = self.cur.execute(
             "SELECT nc_file_id FROM nc_files WHERE nc_file_path = ?",
@@ -227,7 +227,7 @@ class FileManager:
             return None
 
         return file_id[0]
-    
+
     def is_tracked(self, file_path: Path) -> bool:
         res = self.cur.execute(
             "SELECT nc_file_id FROM nc_files WHERE nc_file_path = ?", (str(file_path),)
@@ -235,7 +235,6 @@ class FileManager:
         if not res.fetchone():
             return False
         return True
-
 
     def get_all_nc_files(self) -> list[NCFile]:
         nc_files: list[NCFile] = []
@@ -247,7 +246,7 @@ class FileManager:
         for row in results.fetchall():
             nc_files.append(NCFile(Path(row[0]), row[1]))
         return nc_files
-    
+
     def add_to_database(self, file_path: Path) -> None:
         try:
             self.cur.execute(
@@ -289,7 +288,9 @@ class FileManager:
             gathered_path.unlink()
 
         self.cur.execute("DELETE FROM errors WHERE nc_file_id = ?", (file_id,))
-        self.cur.execute("DELETE FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,))
+        self.cur.execute(
+            "DELETE FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,)
+        )
         self.cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (file_id,))
         print(f"{nc_file.path} removed from database")
 
@@ -318,9 +319,10 @@ class FileManager:
                 self.con.commit()
                 return
         print("Removed file with errors")
-        self.cur.execute("DELETE FROM duplicates WHERE nc_file_id = ?", (duplicate_ids[0],))
+        self.cur.execute(
+            "DELETE FROM duplicates WHERE nc_file_id = ?", (duplicate_ids[0],)
+        )
         self.con.commit()
-
 
     def is_gathered(self, nc_file: NCFile) -> bool:
         file_id = self.get_file_id(nc_file)
@@ -333,7 +335,6 @@ class FileManager:
             return False
 
         return True
-
 
     def gather_nc_file(self, nc_file: NCFile) -> None:
         file_id = self.get_file_id(nc_file)
@@ -351,7 +352,6 @@ class FileManager:
         except sqlite3.IntegrityError:
             print(f"{nc_file.path} is a duplicate")
 
-
     def remove_nc_from_gather(self, nc_file: NCFile) -> None:
         file_id = self.get_file_id(nc_file)
         gathered_path: Path = ALL_FOLDER / nc_file.path.name
@@ -362,9 +362,10 @@ class FileManager:
         if gathered_path.exists():
             gathered_path.unlink()
 
-        self.cur.execute("DELETE FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,))
+        self.cur.execute(
+            "DELETE FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,)
+        )
         self.con.commit()
-
 
     def update_nc_file(self, nc_file: NCFile) -> None:
         file_id = self.get_file_id(nc_file)
@@ -404,7 +405,7 @@ class FileManager:
             ),
         )
         self.con.commit()
-    
+
     def get_duplicates(self) -> list[NCFile]:
         duplicates = [
             NCFile(Path(row[0]), row[1])
@@ -424,7 +425,7 @@ class FileManager:
         if res.fetchone():
             return True
         return False
-    
+
     def get_errors(self, nc_file: NCFile) -> tuple[NCError, ...]:
         file_id = self.get_file_id(nc_file)
         errors: list[NCError] = []
@@ -438,7 +439,6 @@ class FileManager:
                 errors.append(NCError(ErrorType(row[0]), row[1]))
 
         return tuple(errors)
-    
 
     def is_modified(self, nc_file: NCFile) -> bool:
         file_id = self.get_file_id(nc_file)
@@ -447,7 +447,6 @@ class FileManager:
             (file_id,),
         ).fetchone()
         return nc_file.path.stat().st_mtime != res[0]
-
 
     def get_modified_files(self) -> list[NCFile]:
         modified_nc_files: list[NCFile] = []
@@ -459,5 +458,51 @@ class FileManager:
         return modified_nc_files
 
 
-if __name__ == "__main__":
+def main() -> None:
     fm = FileManager()
+
+    run = True
+    while run:
+        try:
+            for file in get_nc_files(NC_FOLDER):
+                if not fm.is_tracked(file):
+                    fm.add_to_database(file)
+
+            for nc_file in fm.get_all_nc_files():
+                if not nc_file.path.exists():
+                    fm.delete_nc_file(nc_file)
+                    continue
+
+                if fm.is_modified(nc_file):
+                    print(nc_file, "is modified")
+                    fm.update_nc_file(nc_file)
+
+                if fm.is_duplicate(nc_file):
+                    continue
+
+                if not fm.is_gathered(nc_file) and not fm.get_errors(nc_file):
+                    fm.gather_nc_file(nc_file)
+
+                if fm.is_gathered(nc_file) and fm.get_errors(nc_file):
+                    fm.remove_nc_from_gather(nc_file)
+
+                if (
+                    fm.is_gathered(nc_file)
+                    and not (ALL_FOLDER / nc_file.path.name).exists()
+                ):
+                    shutil.copy2(
+                        nc_file.path.resolve(),
+                        (ALL_FOLDER / nc_file.path.name).resolve(),
+                    )
+        except KeyboardInterrupt:
+            run = False
+        except FileNotFoundError:
+            if not ALL_FOLDER.exists():
+                ALL_FOLDER.mkdir()
+        except OSError as e:
+            print(e)
+            # print(f"WinError: {e.winerror}\n", f"\n{e}")
+
+
+if __name__ == "__main__":
+    main()
