@@ -14,7 +14,7 @@ BASE_DIR: Path = Path(__file__).resolve().parent
 prg_regex: re.Pattern = re.compile(r"(\d{4,})([A-Za-z.]+)")
 asc_folder_regex: re.Pattern = re.compile(r"\d+.\d+_ASC_\((\d+)\)")
 folder_regex: re.Pattern = re.compile(r"(\d+) ?\((\d+)?\) ?([A-Za-z\+ ]+)?")
-
+first_line_regex:re.Pattern = re.compile(r"O(?P<id>[0-9]{4})\((?P<connection>[a-zA-Z0-9\-]+)\)")
 
 def date_as_path(date=None) -> Path:
     if date is None:
@@ -42,6 +42,7 @@ class ErrorType(Enum):
     INTERNAL_NAME = 3
     MISSING_UG_VALUE = 4
     MISSING_SUBPROGRAM = 5
+    OUT_OF_ORDER = 6
 
 
 @dataclass
@@ -59,15 +60,36 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
         first_line = file.readline()
         contents = file.readlines()
 
-    case_type: str = "DS"
+    case_type:str = ""
+
     if "ASC" in first_line:
         case_type = "ASC"
-    elif "T-L" in first_line or "TLCS" in first_line or "TLOC" in first_line:
+    elif "T-L" in first_line or "TLCS" in first_line or "TLOC" in first_line or "TL14" in first_line:
         case_type = "TLOC"
     elif "AOT14" in first_line:
         case_type = "AOT"
     elif "ATPL" in first_line:
         case_type = "ATPL"
+    else:
+        case_type = "DS"
+    
+    match case_type:
+        case "DS":
+            tools_to_check = ["T0200", "T0700", "T0800", "T0900"]
+            tool_order = ["T0200", "T0200", "T0800", "T0700", "T0900"]
+        case "ASC":
+            tools_to_check = ["T0200", "T0800", "T1200", "T1300"]
+            tool_order = ['T0200', 'T0200', 'T0800', 'T1300', 'T1300', 'T1200', 'T1200']
+        case "TLOC":
+            tools_to_check = ["T0200", "T0700", "T0800"]
+            tool_order = ['T0200', 'T0200', 'T0800', 'T0200', 'T0800', 'T0800', 'T0700']
+        case "AOT":
+            tools_to_check = ["T0200", "T0700", "T0800"]
+            tool_order = ['T0200', 'T0200', 'T0800', 'T0200', 'T0800', 'T0800', 'T0700']
+        case _:
+            tools_to_check = []
+            tool_order = []
+
 
     contains_subprogram_0: bool = False
     contains_subprogram_1: bool = False
@@ -78,6 +100,8 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
     contains_ug_103: bool = False
     contains_ug_104: bool = False
     contains_ug_105: bool = False
+
+    actual_tool_order:list[str] = []
 
     for i, line in enumerate(contents):
         if "$0" in line:
@@ -113,6 +137,20 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
 
         if "#105=" in line:
             contains_ug_105 = True
+        
+        for tool in tools_to_check:
+            if tool in line:
+                actual_tool_order.append(tool)
+
+    
+    if tool_order != actual_tool_order[0:len(tool_order)]:
+        errors.append(
+            NCError(ErrorType.OUT_OF_ORDER, "Operations are not in the correct order.")
+        )
+        print(file_path.name, case_type, first_line)
+        print('actual tool order:', actual_tool_order)
+        print('       tool order:', tool_order)
+        print()
 
     if file_path.stem not in first_line:
         errors.append(
@@ -273,7 +311,7 @@ class FileManager:
                     self.cur.execute(
                         "INSERT INTO duplicates (nc_file_id) VALUES (?)", (file_id,)
                     )
-            print(f"{file_path} added to database")
+            # print(f"{file_path} added to database")
             self.con.commit()
         except PermissionError:
             print("File is being used by another process")
