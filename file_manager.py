@@ -156,6 +156,14 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
             errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #105 value"))
     return tuple(errors)
 
+def get_nc_files(file_path: Path) -> list[Path]:
+    nc_files: list[Path] = []
+
+    for file in file_path.rglob("*.prg", case_sensitive=False):
+        if "all" not in str(file.resolve()).lower():
+            nc_files.append(file)
+
+    return nc_files
 
 class FileManager:
     def __init__(self) -> None:
