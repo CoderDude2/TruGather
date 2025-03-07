@@ -2,16 +2,19 @@ from pathlib import Path
 from enum import Enum
 from dataclasses import dataclass
 from typing import NamedTuple
-
 import datetime
 import math
 import sqlite3
 import shutil
 import re
 
-prg_regex = re.compile(r"(\d{4,})([A-Za-z.]+)")
-asc_folder_regex = re.compile(r"\d+.\d+_ASC_\((\d+)\)")
-folder_regex = re.compile(r"(\d+) ?\((\d+)?\) ?([A-Za-z\+ ]+)?")
+
+BASE_DIR: Path = Path(__file__).resolve().parent
+ERP_DIR: Path = Path(r'\\192.168.1.100\Trubox\####ERP_RM####')
+
+prg_regex: re.Pattern = re.compile(r"(\d{4,})([A-Za-z.]+)")
+asc_folder_regex: re.Pattern = re.compile(r"\d+.\d+_ASC_\((\d+)\)")
+folder_regex: re.Pattern = re.compile(r"(\d+) ?\((\d+)?\) ?([A-Za-z\+ ]+)?")
 
 
 def date_as_path(date=None) -> Path:
@@ -23,10 +26,7 @@ def date_as_path(date=None) -> Path:
     return Path(_year, _month, _day)
 
 
-BASE_DIR: Path = Path(__file__).resolve().parent
-NC_FOLDER: Path = Path(
-    r"\\192.168.1.100\Trubox\####ERP_RM####\Y2025\M03\D06\1. CAM\3. NC files"
-)
+NC_FOLDER: Path = ERP_DIR / date_as_path() / r"1. CAM\3. NC files"
 ALL_FOLDER: Path = BASE_DIR / "nc" / "ALL"
 
 DB_FILE: Path = BASE_DIR / "data2.db"
@@ -60,6 +60,7 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
         first_line = file.readline()
         contents = file.readlines()
 
+    case_type: str = "DS"
     if "ASC" in first_line:
         case_type = "ASC"
     elif "T-L" in first_line or "TLCS" in first_line or "TLOC" in first_line:
@@ -68,18 +69,16 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
         case_type = "AOT"
     elif "ATPL" in first_line:
         case_type = "ATPL"
-    else:
-        case_type = "DS"
 
-    contains_subprogram_0 = False
-    contains_subprogram_1 = False
-    contains_subprogram_2 = False
+    contains_subprogram_0: bool = False
+    contains_subprogram_1: bool = False
+    contains_subprogram_2: bool = False
 
-    contains_ug_101 = False
-    contains_ug_102 = False
-    contains_ug_103 = False
-    contains_ug_104 = False
-    contains_ug_105 = False
+    contains_ug_101: bool = False
+    contains_ug_102: bool = False
+    contains_ug_103: bool = False
+    contains_ug_104: bool = False
+    contains_ug_105: bool = False
 
     for i, line in enumerate(contents):
         if "$0" in line:
@@ -157,10 +156,11 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
             errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #105 value"))
     return tuple(errors)
 
+
 class FileManager:
     def __init__(self) -> None:
-        self.con:sqlite3.Connection = sqlite3.connect(DB_FILE)
-        self.cur:sqlite3.Cursor = self.con.cursor()
+        self.con: sqlite3.Connection = sqlite3.connect(DB_FILE)
+        self.cur: sqlite3.Cursor = self.con.cursor()
         self.init_db()
 
     def init_db(self):
@@ -212,4 +212,3 @@ class FileManager:
 
 if __name__ == "__main__":
     fm = FileManager()
-
