@@ -246,6 +246,15 @@ class FileManager:
             self.con.commit()
         except PermissionError:
             print("File is being used by another process")
+    
+    def get_duplicates(self) -> list[NCFile]:
+        duplicates = [
+            NCFile(Path(row[0]), row[1])
+            for row in self.cur.execute(
+                "SELECT nc_file_path, nc_file_modified_time FROM nc_files JOIN duplicates USING (nc_file_id)"
+            ).fetchall()
+        ]
+        return duplicates
 
 
 if __name__ == "__main__":
