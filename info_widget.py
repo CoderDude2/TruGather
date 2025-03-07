@@ -2,14 +2,13 @@ import os
 import tkinter as tk
 from tkinter import ttk
 from dataclasses import dataclass
-from file_manager import FileManager, IssueType
+from file_manager import FileManager, NCError, NCFile
 import subprocess
 
 @dataclass
 class GUIError:
-    file:str
-    location:str
-    issue_type:IssueType
+    nc_file: NCFile
+    nc_error: NCError
     line_start:int = 0
     line_end:int = 0
 
