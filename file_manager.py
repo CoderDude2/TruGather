@@ -29,7 +29,7 @@ NC_FOLDER: Path = Path(
 )
 ALL_FOLDER: Path = BASE_DIR / "nc" / "ALL"
 
-DB_FILE: Path = BASE_DIR / "data.db"
+DB_FILE: Path = BASE_DIR / "data2.db"
 
 
 class NCFile(NamedTuple):
@@ -159,9 +159,57 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
 
 class FileManager:
     def __init__(self) -> None:
-        self.__con:sqlite3.Connection = sqlite3.connect(DB_FILE)
-        self.__cur:sqlite3.Cursor = self.__con.cursor()
+        self.con:sqlite3.Connection = sqlite3.connect(DB_FILE)
+        self.cur:sqlite3.Cursor = self.con.cursor()
+        self.init_db()
+
+    def init_db(self):
+        self.cur.execute(
+            (
+                "CREATE TABLE "
+                "IF NOT EXISTS nc_files ("
+                "nc_file_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "nc_file_path TEXT NOT NULL UNIQUE,"
+                "nc_file_name TEXT NOT NULL,"
+                "nc_file_modified_time REAL NOT NULL)"
+            )
+        )
+
+        self.cur.execute(
+            (
+                "CREATE TABLE "
+                "IF NOT EXISTS gathered_nc_files ("
+                "gathered_nc_file_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "gathered_nc_file_path TEXT NOT NULL UNIQUE,"
+                "nc_file_id INTEGER NOT NULL,"
+                "FOREIGN KEY(nc_file_id) REFERENCES nc_files(nc_file_id))"
+            )
+        )
+
+        self.cur.execute(
+            (
+                "CREATE TABLE "
+                "IF NOT EXISTS duplicates ("
+                "duplicate_file_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "nc_file_id INTEGER NOT NULL UNIQUE,"
+                "FOREIGN KEY(nc_file_id) REFERENCES nc_files(nc_file_id))"
+            )
+        )
+
+        self.cur.execute(
+            (
+                "CREATE TABLE "
+                "IF NOT EXISTS errors ("
+                "error_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "error_type INTEGER NOT NULL,"
+                "error_msg TEXT NOT NULL,"
+                "nc_file_id INTEGER NOT NULL,"
+                "UNIQUE(error_type, error_msg, nc_file_id)"
+                "FOREIGN KEY(nc_file_id) REFERENCES nc_files(nc_file_id))"
+            )
+        )
 
 
 if __name__ == "__main__":
     fm = FileManager()
+
