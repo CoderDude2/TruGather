@@ -46,7 +46,7 @@ class App(tk.Tk):
         self.control_frame = tk.Frame(master=self)
         self.auto_gather_checkbutton = tk.Checkbutton(master=self.control_frame, text="Auto Gather", variable=self.auto_check, onvalue=True, offvalue=False, command=self.on_auto_gather_toggle)
         self.gather_prg_button = tk.Button(master=self.control_frame, text="Gather All NC", padx=20, pady=20, command=self.fp.gather_all_files)
-        self.gather_asc_button = tk.Button(master=self.control_frame, text="Gather All ASC", padx=20, pady=20)
+        self.gather_asc_button = tk.Button(master=self.control_frame, text="Gather All ASC", padx=20, pady=20, command=self.fp.gather_all_asc_files)
 
         self.info_widget = info_widget.InfoWidget()
 
