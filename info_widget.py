@@ -5,9 +5,8 @@ import tkinter as tk
 import subprocess
 import os
 import threading
-import sqlite3
 
-from file_manager import FileManager, NCError, NCFile, ErrorType, DB_FILE
+from file_manager import FileManager, NCError, NCFile, ErrorType
 
 @dataclass
 class GUIError:

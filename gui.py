@@ -1,4 +1,3 @@
-import threading
 import tkinter as tk
 import os
 from pathlib import Path
