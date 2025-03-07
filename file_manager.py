@@ -216,6 +216,36 @@ class FileManager:
                 "FOREIGN KEY(nc_file_id) REFERENCES nc_files(nc_file_id))"
             )
         )
+    
+    def add_to_database(self, file_path: Path) -> None:
+        try:
+            self.cur.execute(
+                "INSERT INTO nc_files (nc_file_path, nc_file_name, nc_file_modified_time) VALUES (?, ?, ?)",
+                (str(file_path.resolve()), file_path.name, file_path.stat().st_mtime),
+            )
+            if self.cur.lastrowid:
+                file_id: int = self.cur.lastrowid
+                self.cur.executemany(
+                    "INSERT OR IGNORE INTO errors (error_type, error_msg, nc_file_id) VALUES (?, ?, ?)",
+                    [
+                        (e.error_type.value, e.error_msg, file_id)
+                        for e in check_file(file_path)
+                    ],
+                )
+
+                results = self.cur.execute(
+                    "SELECT nc_file_path FROM nc_files WHERE nc_file_name = ? AND nc_file_id != ?",
+                    (file_path.name, file_id),
+                )
+
+                if results.fetchone():
+                    self.cur.execute(
+                        "INSERT INTO duplicates (nc_file_id) VALUES (?)", (file_id,)
+                    )
+            print(f"{file_path} added to database")
+            self.con.commit()
+        except PermissionError:
+            print("File is being used by another process")
 
 
 if __name__ == "__main__":
