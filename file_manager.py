@@ -44,6 +44,7 @@ class ErrorType(Enum):
     MISSING_UG_VALUE = 4
     MISSING_SUBPROGRAM = 5
     OUT_OF_ORDER = 6
+    MISSING_OPERATION = 7
 
 
 @dataclass
@@ -78,15 +79,19 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
         case "DS":
             tools_to_check = ["T0200", "T0700", "T0800", "T0900"]
             tool_order = ["T0200", "T0200", "T0800", "T0700", "T0900"]
+            t0200_count = 2
         case "ASC":
             tools_to_check = ["T0200", "T0800", "T1200", "T1300"]
             tool_order = ['T0200', 'T0200', 'T0800', 'T1300', 'T1300', 'T1200', 'T1200']
+            t0200_count = 2
         case "TLOC":
             tools_to_check = ["T0200", "T0700", "T0800"]
             tool_order = ['T0200', 'T0200', 'T0800', 'T0200', 'T0800', 'T0800', 'T0700']
+            t0200_count = 3
         case "AOT":
             tools_to_check = ["T0200", "T0700", "T0800"]
             tool_order = ['T0200', 'T0200', 'T0800', 'T0200', 'T0800', 'T0800', 'T0700']
+            t0200_count = 3
         case _:
             tools_to_check = []
             tool_order = []
@@ -103,6 +108,7 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
     contains_ug_105: bool = False
 
     actual_tool_order:list[str] = []
+    actual_t0200_count:int = 0
 
     for i, line in enumerate(contents):
         if "$0" in line:
@@ -143,10 +149,18 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
             if tool in line:
                 actual_tool_order.append(tool)
 
+                if tool == "T0200":
+                    actual_t0200_count += 1
+
     
     if tool_order != actual_tool_order[0:len(tool_order)]:
         errors.append(
             NCError(ErrorType.OUT_OF_ORDER, "Operations are not in the correct order.")
+        )
+    
+    if actual_t0200_count != t0200_count:
+        errors.append(
+            NCError(ErrorType.MISSING_OPERATION, f"Incorrect T0200 count({actual_t0200_count}), should have {t0200_count}")
         )
 
     if file_path.stem not in first_line:
