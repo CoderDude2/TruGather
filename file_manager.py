@@ -10,6 +10,7 @@ import re
 import threading
 
 BASE_DIR: Path = Path(__file__).resolve().parent
+ERP_DIR: Path = Path(r"\\192.168.1.100\Trubox\####ERP_RM####")
 
 prg_regex: re.Pattern = re.compile(r"(\d{4,})([A-Za-z.]+)")
 asc_folder_regex: re.Pattern = re.compile(r"\d+.\d+_ASC_\((\d+)\)")
@@ -25,7 +26,7 @@ def date_as_path(date=None) -> Path:
     return Path(_year, _month, _day)
 
 
-NC_FOLDER: Path = BASE_DIR / "nc"
+NC_FOLDER: Path = ERP_DIR / date_as_path() / r"1. CAM\3. NC files"
 ALL_FOLDER: Path = NC_FOLDER / "ALL"
 
 DB_FILE: Path = BASE_DIR / "data2.db"
@@ -147,10 +148,6 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
         errors.append(
             NCError(ErrorType.OUT_OF_ORDER, "Operations are not in the correct order.")
         )
-        print(file_path.name, case_type, first_line)
-        print('actual tool order:', actual_tool_order)
-        print('       tool order:', tool_order)
-        print()
 
     if file_path.stem not in first_line:
         errors.append(
@@ -198,7 +195,7 @@ def get_nc_files(file_path: Path) -> list[Path]:
     nc_files: list[Path] = []
 
     for file in file_path.rglob("*.prg", case_sensitive=False):
-        if "all" not in str(file.resolve()).lower() and "asc" not in str(file.resolve()).lower():
+        if "all" not in str(file.resolve()).lower() and "_asc_" not in str(file.resolve()).lower():
             nc_files.append(file)
 
     return nc_files
@@ -301,6 +298,7 @@ class FileManager:
                         for e in check_file(file_path)
                     ],
                 )
+                self.con.commit()
 
                 results = self.cur.execute(
                     "SELECT nc_file_path FROM nc_files WHERE nc_file_name = ? AND nc_file_id != ?",
@@ -311,7 +309,7 @@ class FileManager:
                     self.cur.execute(
                         "INSERT INTO duplicates (nc_file_id) VALUES (?)", (file_id,)
                     )
-            # print(f"{file_path} added to database")
+            print(f"{file_path} added to database")
             self.con.commit()
         except PermissionError:
             print("File is being used by another process")
@@ -331,6 +329,7 @@ class FileManager:
             "DELETE FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,)
         )
         self.cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (file_id,))
+        self.con.commit()
         print(f"{nc_file.path} removed from database")
 
         duplicate_ids = [
@@ -388,6 +387,7 @@ class FileManager:
                 (str(gathered_path.resolve()), file_id),
             )
             print(f"{nc_file.path} gathered")
+            self.con.commit()
         except sqlite3.IntegrityError:
             print(f"{nc_file.path} is a duplicate")
 
