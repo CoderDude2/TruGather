@@ -10,10 +10,15 @@ import re
 import threading
 
 BASE_DIR: Path = Path(__file__).resolve().parent
+# ERP_DIR: Path = Path(r"\\192.168.1.100\Trubox\####ERP_RM####")
+ERP_DIR: Path = BASE_DIR
 
 prg_regex: re.Pattern = re.compile(r"(\d{4,})([A-Za-z.]+)")
 asc_folder_regex: re.Pattern = re.compile(r"\d+.\d+_ASC_\((\d+)\)")
 folder_regex: re.Pattern = re.compile(r"(\d+) ?\((\d+)?\) ?([A-Za-z\+ ]+)?")
+first_line_regex: re.Pattern = re.compile(
+    r"O(?P<id>[0-9]{4})\((?P<connection>[a-zA-Z0-9\-]+)\)"
+)
 
 
 def date_as_path(date=None) -> Path:
@@ -25,7 +30,8 @@ def date_as_path(date=None) -> Path:
     return Path(_year, _month, _day)
 
 
-NC_FOLDER: Path = BASE_DIR / "nc"
+# NC_FOLDER: Path = ERP_DIR / date_as_path() / r"1. CAM\3. NC files"
+NC_FOLDER: Path = ERP_DIR / "nc"
 ALL_FOLDER: Path = NC_FOLDER / "ALL"
 
 DB_FILE: Path = BASE_DIR / "data2.db"
@@ -36,12 +42,22 @@ class NCFile(NamedTuple):
     modified_time: float
 
 
+@dataclass
+class Tool:
+    tool_identifier: str
+    order: list[int] | None = None
+    min_count: int | None = None
+    max_count: int | None = None
+
+
 class ErrorType(Enum):
     INVALID_NAME = 1
     PART_LENGTH = 2
     INTERNAL_NAME = 3
     MISSING_UG_VALUE = 4
     MISSING_SUBPROGRAM = 5
+    OUT_OF_ORDER = 6
+    INVALID_OPERATION_COUNT = 7
 
 
 @dataclass
@@ -59,15 +75,51 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
         first_line = file.readline()
         contents = file.readlines()
 
-    case_type: str = "DS"
+    case_type: str = ""
+
     if "ASC" in first_line:
         case_type = "ASC"
-    elif "T-L" in first_line or "TLCS" in first_line or "TLOC" in first_line:
+    elif (
+        "T-L" in first_line
+        or "TLCS" in first_line
+        or "TLOC" in first_line
+        or "TL14" in first_line
+    ):
         case_type = "TLOC"
     elif "AOT14" in first_line:
         case_type = "AOT"
     elif "ATPL" in first_line:
         case_type = "ATPL"
+    else:
+        case_type = "DS"
+
+    match case_type:
+        case "DS":
+            tools_to_check = [
+                Tool("T0200", min_count=2, max_count=2, order=[0, 1]),
+                Tool("T0700", min_count=1, max_count=None, order=[3]),
+                Tool("T0800", min_count=1, order=[2]),
+                Tool("T0900", min_count=1, order=[4]),
+            ]
+        case "ASC":
+            tools_to_check = [
+                Tool("T0200", min_count=2, max_count=2, order=[0, 1]),
+                Tool("T0800", min_count=1, order=[2]),
+                Tool("T1200", min_count=1, order=[4]),
+                Tool("T1300", min_count=1, order=[3]),
+            ]
+        case "TLOC":
+            tools_to_check = [
+                Tool("T0200", min_count=3, max_count=3, order=[0, 1, 3]),
+                Tool("T0800", min_count=1, order=[2, 4]),
+                Tool("T0700", min_count=1, order=[5]),
+            ]
+        case "AOT":
+            tools_to_check = [
+                Tool("T0200", min_count=3, max_count=3, order=[0, 1, 3]),
+                Tool("T0800", min_count=1, order=[2, 4]),
+                Tool("T0700", min_count=1, order=[5]),
+            ]
 
     contains_subprogram_0: bool = False
     contains_subprogram_1: bool = False
@@ -78,6 +130,11 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
     contains_ug_103: bool = False
     contains_ug_104: bool = False
     contains_ug_105: bool = False
+
+    tool_index: int = 0
+    tool_order_map: dict[str, list[int]] = {
+        k: [] for k in [t.tool_identifier for t in tools_to_check]
+    }
 
     for i, line in enumerate(contents):
         if "$0" in line:
@@ -94,10 +151,15 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
                 part_length = float(line.split("=")[1].strip())
 
         if "T0100 (CUT-OFF)" in line:
-            if case_type == "ATPL":
-                cut_off = float(contents[i + 4].split(" ")[2][1:])
-            else:
-                cut_off = float(contents[i + 2][4:])
+            try:
+                if case_type == "ATPL":
+                    cut_off = float(contents[i + 4].split(" ")[2][1:])
+                else:
+                    cut_off = float(contents[i + 2][4:])
+            except ValueError:
+                cut_off = 0
+            except IndexError:
+                cut_off = 0
 
         if "#101=" in line:
             contains_ug_101 = True
@@ -113,6 +175,40 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
 
         if "#105=" in line:
             contains_ug_105 = True
+
+        for tool in tools_to_check:
+            if tool.tool_identifier in line:
+                if len(tool_order_map[tool.tool_identifier]) <= tool.min_count:
+                    tool_order_map[tool.tool_identifier].append(tool_index)
+                tool_index += 1
+
+    missing_operations = False
+    for tool in tools_to_check:
+        order = tool_order_map[tool.tool_identifier]
+        if len(order) < tool.min_count:
+            err_msg: str = f"{tool.tool_identifier} count is {len(order)}, should have at least {tool.min_count}"
+            if tool.max_count and tool.max_count == tool.min_count:
+                err_msg: str = f"{tool.tool_identifier} count is {len(order)}, should have {tool.min_count}"
+
+            errors.append(
+                NCError(
+                    ErrorType.INVALID_OPERATION_COUNT,
+                    err_msg,
+                )
+            )
+            missing_operations = True
+
+    if not missing_operations:
+        for tool in tools_to_check:
+            order = tool_order_map[tool.tool_identifier]
+            if tool.order != order:
+                errors.append(
+                    NCError(
+                        ErrorType.OUT_OF_ORDER,
+                        f"{tool.tool_identifier} is not in the correct order",
+                    )
+                )
+                break
 
     if file_path.stem not in first_line:
         errors.append(
@@ -160,7 +256,10 @@ def get_nc_files(file_path: Path) -> list[Path]:
     nc_files: list[Path] = []
 
     for file in file_path.rglob("*.prg", case_sensitive=False):
-        if "all" not in str(file.resolve()).lower() and "asc" not in str(file.resolve()).lower():
+        if (
+            "all" not in str(file.resolve()).lower()
+            and "_asc_" not in str(file.resolve()).lower()
+        ):
             nc_files.append(file)
 
     return nc_files
@@ -263,6 +362,7 @@ class FileManager:
                         for e in check_file(file_path)
                     ],
                 )
+                self.con.commit()
 
                 results = self.cur.execute(
                     "SELECT nc_file_path FROM nc_files WHERE nc_file_name = ? AND nc_file_id != ?",
@@ -293,6 +393,7 @@ class FileManager:
             "DELETE FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,)
         )
         self.cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (file_id,))
+        self.con.commit()
         print(f"{nc_file.path} removed from database")
 
         duplicate_ids = [
@@ -350,6 +451,7 @@ class FileManager:
                 (str(gathered_path.resolve()), file_id),
             )
             print(f"{nc_file.path} gathered")
+            self.con.commit()
         except sqlite3.IntegrityError:
             print(f"{nc_file.path} is a duplicate")
 
@@ -463,7 +565,7 @@ class FileProcessor:
     def __init__(self) -> None:
         self.processing_event = threading.Event()
         self.gathering_event = threading.Event()
-        
+
         self.gathering_event.clear()
         self.processing_event.set()
         self.process_files_thread = threading.Thread(
@@ -495,34 +597,37 @@ class FileProcessor:
                     (ALL_FOLDER / nc_file.path.name).resolve(),
                 )
         fm.con.close()
-    
+
     def gather_all_asc_files(self) -> None:
         fm = FileManager()
         todays_date = datetime.datetime.now().date()
 
-        asc_folder: Path|None = None
+        asc_folder: Path | None = None
         for file in NC_FOLDER.iterdir():
             if file.is_dir() and asc_folder_regex.match(file.name):
                 asc_folder = file
-        
+
         if not asc_folder:
-            asc_folder = NC_FOLDER / f'{todays_date.month}.{todays_date.day}_ASC_(0)'
-        
+            asc_folder = NC_FOLDER / f"{todays_date.month}.{todays_date.day}_ASC_(0)"
+
         asc_folder.mkdir(exist_ok=True)
         for nc_file in fm.get_all_nc_files():
             if fm.is_duplicate(nc_file) or fm.get_errors(nc_file):
                 continue
-            
-            with nc_file.path.open('r') as f:
+
+            with nc_file.path.open("r") as f:
                 first_line = f.readline()
-            
+
             if "ASC" in first_line:
                 if not (asc_folder / nc_file.path.name).exists():
                     shutil.copy2(
                         nc_file.path.resolve(),
                         (asc_folder / nc_file.path.name).resolve(),
-                    )     
-        asc_folder.rename(NC_FOLDER / f'{todays_date.month}.{todays_date.day}_ASC_({len(list(asc_folder.iterdir()))})')
+                    )
+        asc_folder.rename(
+            NC_FOLDER
+            / f"{todays_date.month}.{todays_date.day}_ASC_({len(list(asc_folder.iterdir()))})"
+        )
         fm.con.close()
 
     def process_files(
@@ -544,7 +649,7 @@ class FileProcessor:
                     if fm.is_modified(nc_file):
                         print(nc_file, "is modified")
                         fm.update_nc_file(nc_file)
-                    
+
                     if fm.is_gathered(nc_file) and fm.get_errors(nc_file):
                         fm.remove_nc_from_gather(nc_file)
 
@@ -554,7 +659,7 @@ class FileProcessor:
                     if gathering_event.is_set():
                         if not fm.is_gathered(nc_file) and not fm.get_errors(nc_file):
                             fm.gather_nc_file(nc_file)
-                        
+
                         if (
                             fm.is_gathered(nc_file)
                             and not (ALL_FOLDER / nc_file.path.name).exists()
