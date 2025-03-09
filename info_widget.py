@@ -157,12 +157,12 @@ class InfoWidget(tk.Frame):
             rightClickMenu.add_command(label="Open File Location", command=lambda:(self.open_file_location(clicked_gui_duplicate.nc_file.path)))
             rightClickMenu.tk_popup(event.x_root, event.y_root)
     
-    def open_file_location(self, path) -> None:
-        if path:
+    def open_file_location(self, file_path:Path) -> None:
+        if file_path.exists():
             if os.name == 'nt':
-                subprocess.Popen(f'explorer /select, {path}')
+                subprocess.Popen(f'explorer /select, {file_path}')
             else:
-                subprocess.call("open", "-R", path)
+                subprocess.call(["open", "-R", str(file_path.resolve())])
 
 
 def main() -> None:
