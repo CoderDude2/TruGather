@@ -601,34 +601,38 @@ class FileProcessor:
     def gather_all_asc_files(self) -> None:
         fm = FileManager()
         todays_date = datetime.datetime.now().date()
+        try:
+            asc_folder: Path | None = None
+            for file in NC_FOLDER.iterdir():
+                if file.is_dir() and asc_folder_regex.match(file.name):
+                    asc_folder = file
 
-        asc_folder: Path | None = None
-        for file in NC_FOLDER.iterdir():
-            if file.is_dir() and asc_folder_regex.match(file.name):
-                asc_folder = file
+            if not asc_folder:
+                asc_folder = (
+                    NC_FOLDER / f"{todays_date.month}.{todays_date.day}_ASC_(0)"
+                )
 
-        if not asc_folder:
-            asc_folder = NC_FOLDER / f"{todays_date.month}.{todays_date.day}_ASC_(0)"
+            asc_folder.mkdir(exist_ok=True)
+            for nc_file in fm.get_all_nc_files():
+                if fm.is_duplicate(nc_file) or fm.get_errors(nc_file):
+                    continue
 
-        asc_folder.mkdir(exist_ok=True)
-        for nc_file in fm.get_all_nc_files():
-            if fm.is_duplicate(nc_file) or fm.get_errors(nc_file):
-                continue
+                with nc_file.path.open("r") as f:
+                    first_line = f.readline()
 
-            with nc_file.path.open("r") as f:
-                first_line = f.readline()
-
-            if "ASC" in first_line:
-                if not (asc_folder / nc_file.path.name).exists():
-                    shutil.copy2(
-                        nc_file.path.resolve(),
-                        (asc_folder / nc_file.path.name).resolve(),
-                    )
-        asc_folder.rename(
-            NC_FOLDER
-            / f"{todays_date.month}.{todays_date.day}_ASC_({len(list(asc_folder.iterdir()))})"
-        )
-        fm.con.close()
+                if "ASC" in first_line:
+                    if not (asc_folder / nc_file.path.name).exists():
+                        shutil.copy2(
+                            nc_file.path.resolve(),
+                            (asc_folder / nc_file.path.name).resolve(),
+                        )
+            fm.con.close()
+            asc_folder.rename(
+                NC_FOLDER
+                / f"{todays_date.month}.{todays_date.day}_ASC_({len(list(asc_folder.iterdir()))})"
+            )
+        except FileNotFoundError:
+            fm.con.close()
 
     def process_files(
         self, processing_event: threading.Event, gathering_event: threading.Event
