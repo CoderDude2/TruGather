@@ -10,8 +10,8 @@ import re
 import threading
 
 BASE_DIR: Path = Path(__file__).resolve().parent
-# ERP_DIR: Path = Path(r"\\192.168.1.100\Trubox\####ERP_RM####")
-ERP_DIR: Path = BASE_DIR
+ERP_DIR: Path = Path(r"\\192.168.1.100\Trubox\####ERP_RM####")
+# ERP_DIR: Path = BASE_DIR
 
 prg_regex: re.Pattern = re.compile(r"(\d{4,})([A-Za-z.]+)")
 asc_folder_regex: re.Pattern = re.compile(r"\d+.\d+_ASC_\((\d+)\)")
@@ -30,11 +30,11 @@ def date_as_path(date=None) -> Path:
     return Path(_year, _month, _day)
 
 
-# NC_FOLDER: Path = ERP_DIR / date_as_path() / r"1. CAM\3. NC files"
-NC_FOLDER: Path = ERP_DIR / "nc"
+NC_FOLDER: Path = ERP_DIR / date_as_path() / r"1. CAM\3. NC files"
+# NC_FOLDER: Path = ERP_DIR / "nc"
 ALL_FOLDER: Path = NC_FOLDER / "ALL"
 
-DB_FILE: Path = BASE_DIR / "data2.db"
+DB_FILE: Path = BASE_DIR / "files.db"
 
 
 class NCFile(NamedTuple):
@@ -182,7 +182,7 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
                     tool_order_map[tool.tool_identifier].append(tool_index)
                 tool_index += 1
 
-    missing_operations = False
+    missing_operations: bool = False
     for tool in tools_to_check:
         order = tool_order_map[tool.tool_identifier]
         if len(order) < tool.min_count:
@@ -271,7 +271,7 @@ class FileManager:
         self.cur: sqlite3.Cursor = self.con.cursor()
         self.init_db()
 
-    def init_db(self):
+    def init_db(self) -> None:
         self.cur.execute(
             (
                 "CREATE TABLE "
@@ -683,23 +683,3 @@ class FileProcessor:
 
     def stop_processing(self) -> None:
         self.processing_event.clear()
-
-
-def main() -> None:
-    fp = FileProcessor()
-    while True:
-        inp = input()
-
-        if inp == "gather on":
-            fp.start_gathering()
-        elif inp == "gather off":
-            fp.stop_gathering()
-        elif inp == "end":
-            fp.stop_processing()
-            exit()
-        else:
-            print("Invalid Input")
-
-
-if __name__ == "__main__":
-    main()
