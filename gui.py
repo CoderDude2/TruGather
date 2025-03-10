@@ -23,9 +23,9 @@ class MenuBar(tk.Menu):
 
     def on_help_option(self):
         if os.name == "nt":
-            os.system(f"start {os.path.join(BASE_DIR, 'resources/help/index.html')}")
+            os.system(f"start {os.path.join(BASE_DIR, "resources/help/index.html")}")
         elif os.name == "posix":
-            os.system(f"open {os.path.join(BASE_DIR, 'resources/help/index.html')}")
+            os.system(f"open {os.path.join(BASE_DIR, "resources/help/index.html")}")
 
 
 class App(tk.Tk):

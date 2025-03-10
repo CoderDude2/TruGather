@@ -24,8 +24,8 @@ first_line_regex: re.Pattern = re.compile(
 def date_as_path(date=None) -> Path:
     if date is None:
         date = datetime.datetime.now().date()
-    _day = f"D{'0' + str(date.day) if date.day < 10 else str(date.day)}"
-    _month = f"M{'0' + str(date.month) if date.month < 10 else str(date.month)}"
+    _day = f"D{"0" + str(date.day) if date.day < 10 else str(date.day)}"
+    _month = f"M{"0" + str(date.month) if date.month < 10 else str(date.month)}"
     _year = f"Y{str(date.year)}"
     return Path(_year, _month, _day)
 

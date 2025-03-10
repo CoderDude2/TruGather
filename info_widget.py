@@ -121,7 +121,7 @@ class InfoWidget(tk.Frame):
             new_text.insert("end", "\n", ("error", "spacer2"))
             new_text.insert(
                 "end",
-                f" {' '.join(gui_error.nc_error.error_type.name.split('_')).upper()} ERROR: {gui_error.nc_error.error_msg}\n",
+                f" {" ".join(gui_error.nc_error.error_type.name.split("_")).upper()} ERROR: {gui_error.nc_error.error_msg}\n",
                 (
                     "error",
                     "issue_message",
