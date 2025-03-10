@@ -699,7 +699,6 @@ class FileProcessor:
                     for file in get_nc_files(NC_FOLDER):
                         if not fm.is_tracked(file):
                             if not internet_connected_event.is_set():
-                                print("Not connected")
                                 break
                             fm.add_to_database(file)
 

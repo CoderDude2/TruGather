@@ -175,7 +175,6 @@ class InfoWidget(tk.Frame):
             if previous_connection_status != is_internet_connected():
                 previous_connection_status = is_internet_connected()
                 if previous_connection_status is False:
-                    print(previous_connection_status)
                     self.text["state"] = "normal"
                     self.text.delete("1.0", "end")
                     self.text.insert("end", "Internet is not connected...")
@@ -186,26 +185,24 @@ class InfoWidget(tk.Frame):
                     self.text.delete("1.0", "end")
                     self.text["state"] = "disabled"
 
-            if is_internet_connected():
-                data_version = fm.cur.execute("PRAGMA data_version").fetchone()[0]
+            data_version = fm.cur.execute("PRAGMA data_version").fetchone()[0]
+            if data_version != previous_data_value:
+                previous_data_value = data_version
+                self.gui_errors.clear()
+                self.duplicates.clear()
 
-                if data_version != previous_data_value:
-                    previous_data_value = data_version
-                    self.gui_errors.clear()
-                    self.duplicates.clear()
+                results = fm.cur.execute(
+                    "SELECT nc_file_path, nc_file_modified_time, error_type, error_msg FROM nc_files JOIN errors USING (nc_file_id)"
+                )
+                for row in results:
+                    nc_file: NCFile = NCFile(Path(row[0]), row[1])
+                    nc_error: NCError = NCError(ErrorType(row[2]), row[3])
+                    self.gui_errors.append(GUIError(nc_file, nc_error))
 
-                    results = fm.cur.execute(
-                        "SELECT nc_file_path, nc_file_modified_time, error_type, error_msg FROM nc_files JOIN errors USING (nc_file_id)"
-                    )
-                    for row in results:
-                        nc_file: NCFile = NCFile(Path(row[0]), row[1])
-                        nc_error: NCError = NCError(ErrorType(row[2]), row[3])
-                        self.gui_errors.append(GUIError(nc_file, nc_error))
+                for duplicate in fm.get_duplicates():
+                    self.duplicates.append(GUIDuplicate(duplicate))
 
-                    for duplicate in fm.get_duplicates():
-                        self.duplicates.append(GUIDuplicate(duplicate))
-
-                    self.render()
+                self.render()
         fm.con.close()
 
     def close_connection(self) -> None:
