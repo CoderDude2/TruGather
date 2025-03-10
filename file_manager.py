@@ -10,8 +10,8 @@ import re
 import threading
 
 BASE_DIR: Path = Path(__file__).resolve().parent
-ERP_DIR: Path = Path(r"\\192.168.1.100\Trubox\####ERP_RM####")
-# ERP_DIR: Path = BASE_DIR
+# ERP_DIR: Path = Path(r"\\192.168.1.100\Trubox\####ERP_RM####")
+ERP_DIR: Path = BASE_DIR
 
 prg_regex: re.Pattern = re.compile(r"(\d{4,})([A-Za-z.]+)")
 asc_folder_regex: re.Pattern = re.compile(r"\d+.\d+_ASC_\((\d+)\)")
@@ -30,8 +30,8 @@ def date_as_path(date=None) -> Path:
     return Path(_year, _month, _day)
 
 
-NC_FOLDER: Path = ERP_DIR / date_as_path() / r"1. CAM\3. NC files"
-# NC_FOLDER: Path = ERP_DIR / "nc"
+# NC_FOLDER: Path = ERP_DIR / date_as_path() / r"1. CAM\3. NC files"
+NC_FOLDER: Path = ERP_DIR / "nc"
 ALL_FOLDER: Path = NC_FOLDER / "ALL"
 
 DB_FILE: Path = BASE_DIR / "files.db"
@@ -120,6 +120,8 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
                 Tool("T0800", min_count=1, order=[2, 4]),
                 Tool("T0700", min_count=1, order=[5]),
             ]
+        case "ATPL":
+            return tuple(errors)
 
     contains_subprogram_0: bool = False
     contains_subprogram_1: bool = False
@@ -239,16 +241,27 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
         )
 
     if case_type == "ASC" or case_type == "TLOC" or case_type == "AOT":
-        if not contains_ug_101:
-            errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #101 value"))
-        if not contains_ug_102:
-            errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #102 value"))
-        if not contains_ug_103:
-            errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #103 value"))
-        if not contains_ug_104:
-            errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #104 value"))
-        if not contains_ug_105:
-            errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #105 value"))
+        if all(
+            [
+                contains_ug_101 is False,
+                contains_ug_102 is False,
+                contains_ug_103 is False,
+                contains_ug_104 is False,
+                contains_ug_105 is False,
+            ]
+        ):
+            errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing all UG values"))
+        else:
+            if not contains_ug_101:
+                errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #101 value"))
+            if not contains_ug_102:
+                errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #102 value"))
+            if not contains_ug_103:
+                errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #103 value"))
+            if not contains_ug_104:
+                errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #104 value"))
+            if not contains_ug_105:
+                errors.append(NCError(ErrorType.MISSING_UG_VALUE, "Missing #105 value"))
     return tuple(errors)
 
 
@@ -362,7 +375,6 @@ class FileManager:
                         for e in check_file(file_path)
                     ],
                 )
-                self.con.commit()
 
                 results = self.cur.execute(
                     "SELECT nc_file_path FROM nc_files WHERE nc_file_name = ? AND nc_file_id != ?",
@@ -393,7 +405,6 @@ class FileManager:
             "DELETE FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,)
         )
         self.cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (file_id,))
-        self.con.commit()
         print(f"{nc_file.path} removed from database")
 
         duplicate_ids = [
@@ -507,6 +518,7 @@ class FileManager:
                 file_id,
             ),
         )
+
         self.con.commit()
 
     def get_duplicates(self) -> list[NCFile]:
@@ -668,6 +680,12 @@ class FileProcessor:
                             fm.is_gathered(nc_file)
                             and not (ALL_FOLDER / nc_file.path.name).exists()
                         ):
+                            shutil.copy2(
+                                nc_file.path.resolve(),
+                                (ALL_FOLDER / nc_file.path.name).resolve(),
+                            )
+                        
+                        if fm.is_gathered(nc_file) and nc_file.modified_time != (ALL_FOLDER / nc_file.path.name).resolve().stat().st_mtime:
                             shutil.copy2(
                                 nc_file.path.resolve(),
                                 (ALL_FOLDER / nc_file.path.name).resolve(),
