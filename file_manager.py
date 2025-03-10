@@ -2,6 +2,7 @@ from pathlib import Path
 from enum import Enum
 from dataclasses import dataclass
 from typing import NamedTuple
+import http.client as httplib
 import datetime
 import math
 import sqlite3
@@ -9,9 +10,20 @@ import shutil
 import re
 import threading
 
+def is_internet_connected() -> bool:
+    conn = httplib.HTTPConnection("192.168.1.100", timeout=5)
+    try:
+        conn.request("HEAD", "/")
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
 BASE_DIR: Path = Path(__file__).resolve().parent
-# ERP_DIR: Path = Path(r"\\192.168.1.100\Trubox\####ERP_RM####")
-ERP_DIR: Path = BASE_DIR
+ERP_DIR: Path = Path(r"\\192.168.1.100\Trubox\####ERP_RM####")
+# ERP_DIR: Path = BASE_DIR
 
 prg_regex: re.Pattern = re.compile(r"(\d{4,})([A-Za-z.]+)")
 asc_folder_regex: re.Pattern = re.compile(r"\d+.\d+_ASC_\((\d+)\)")
@@ -30,8 +42,8 @@ def date_as_path(date=None) -> Path:
     return Path(_year, _month, _day)
 
 
-# NC_FOLDER: Path = ERP_DIR / date_as_path() / r"1. CAM\3. NC files"
-NC_FOLDER: Path = ERP_DIR / "nc"
+NC_FOLDER: Path = ERP_DIR / date_as_path(datetime.date(2025, 3, 6)) / r"1. CAM\3. NC files"
+# NC_FOLDER: Path = ERP_DIR / "nc"
 ALL_FOLDER: Path = NC_FOLDER / "ALL"
 
 DB_FILE: Path = BASE_DIR / "files.db"
@@ -111,13 +123,13 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
         case "TLOC":
             tools_to_check = [
                 Tool("T0200", min_count=3, max_count=3, order=[0, 1, 3]),
-                Tool("T0800", min_count=1, order=[2, 4]),
+                Tool("T0800", min_count=2, order=[2, 4]),
                 Tool("T0700", min_count=1, order=[5]),
             ]
         case "AOT":
             tools_to_check = [
                 Tool("T0200", min_count=3, max_count=3, order=[0, 1, 3]),
-                Tool("T0800", min_count=1, order=[2, 4]),
+                Tool("T0800", min_count=2, order=[2, 4]),
                 Tool("T0700", min_count=1, order=[5]),
             ]
         case "ATPL":
@@ -180,10 +192,12 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
 
         for tool in tools_to_check:
             if tool.tool_identifier in line:
-                if len(tool_order_map[tool.tool_identifier]) <= tool.min_count:
+                if len(tool_order_map[tool.tool_identifier]) < tool.min_count:
                     tool_order_map[tool.tool_identifier].append(tool_index)
-                tool_index += 1
+                    tool_index += 1
 
+    for k,v in tool_order_map.items():
+        print(k,v)
     missing_operations: bool = False
     for tool in tools_to_check:
         order = tool_order_map[tool.tool_identifier]
@@ -591,29 +605,39 @@ class FileProcessor:
 
     def gather_all_files(self) -> None:
         fm = FileManager()
-        for nc_file in fm.get_all_nc_files():
-            if fm.is_duplicate(nc_file):
-                continue
-            if not fm.is_gathered(nc_file) and not fm.get_errors(nc_file):
-                fm.gather_nc_file(nc_file)
+        try:
+            if not is_internet_connected():
+                fm.con.close()
+                return
+            for nc_file in fm.get_all_nc_files():
+                if fm.is_duplicate(nc_file):
+                    continue
+                if not fm.is_gathered(nc_file) and not fm.get_errors(nc_file):
+                    fm.gather_nc_file(nc_file)
 
-            if fm.is_gathered(nc_file) and fm.get_errors(nc_file):
-                fm.remove_nc_from_gather(nc_file)
+                if fm.is_gathered(nc_file) and fm.get_errors(nc_file):
+                    fm.remove_nc_from_gather(nc_file)
 
-            if (
-                fm.is_gathered(nc_file)
-                and not (ALL_FOLDER / nc_file.path.name).exists()
-            ):
-                shutil.copy2(
-                    nc_file.path.resolve(),
-                    (ALL_FOLDER / nc_file.path.name).resolve(),
-                )
+                if (
+                    fm.is_gathered(nc_file)
+                    and not (ALL_FOLDER / nc_file.path.name).exists()
+                ):
+                    shutil.copy2(
+                        nc_file.path.resolve(),
+                        (ALL_FOLDER / nc_file.path.name).resolve(),
+                    )
+        except FileNotFoundError:
+            print("The internet may be disconnected.")
+            
         fm.con.close()
 
     def gather_all_asc_files(self) -> None:
         fm = FileManager()
         todays_date = datetime.datetime.now().date()
         try:
+            if not is_internet_connected():
+                fm.con.close()
+                return
             asc_folder: Path | None = None
             for file in NC_FOLDER.iterdir():
                 if file.is_dir() and asc_folder_regex.match(file.name):
@@ -652,49 +676,55 @@ class FileProcessor:
         fm = FileManager()
 
         while processing_event.is_set():
-            try:
-                for file in get_nc_files(NC_FOLDER):
-                    if not fm.is_tracked(file):
-                        fm.add_to_database(file)
-
-                for nc_file in fm.get_all_nc_files():
-                    if not nc_file.path.exists():
-                        fm.delete_nc_file(nc_file)
+                if not is_internet_connected():
                         continue
+                try:
+                    for file in get_nc_files(NC_FOLDER):
+                        if not fm.is_tracked(file):
+                            if not is_internet_connected():
+                                break
+                            fm.add_to_database(file)
 
-                    if fm.is_modified(nc_file):
-                        print(nc_file, "is modified")
-                        fm.update_nc_file(nc_file)
+                    for nc_file in fm.get_all_nc_files():
+                        if not is_internet_connected():
+                                break
+                        if not nc_file.path.exists():
+                            fm.delete_nc_file(nc_file)
+                            continue
 
-                    if fm.is_gathered(nc_file) and fm.get_errors(nc_file):
-                        fm.remove_nc_from_gather(nc_file)
+                        if fm.is_modified(nc_file):
+                            print(nc_file, "is modified")
+                            fm.update_nc_file(nc_file)
 
-                    if fm.is_duplicate(nc_file):
-                        continue
+                        if fm.is_gathered(nc_file) and fm.get_errors(nc_file):
+                            fm.remove_nc_from_gather(nc_file)
 
-                    if gathering_event.is_set():
-                        if not fm.is_gathered(nc_file) and not fm.get_errors(nc_file):
-                            fm.gather_nc_file(nc_file)
+                        if fm.is_duplicate(nc_file):
+                            continue
 
-                        if (
-                            fm.is_gathered(nc_file)
-                            and not (ALL_FOLDER / nc_file.path.name).exists()
-                        ):
-                            shutil.copy2(
-                                nc_file.path.resolve(),
-                                (ALL_FOLDER / nc_file.path.name).resolve(),
-                            )
-                        
-                        if fm.is_gathered(nc_file) and nc_file.modified_time != (ALL_FOLDER / nc_file.path.name).resolve().stat().st_mtime:
-                            shutil.copy2(
-                                nc_file.path.resolve(),
-                                (ALL_FOLDER / nc_file.path.name).resolve(),
-                            )
-            except FileNotFoundError:
-                if not ALL_FOLDER.exists():
-                    ALL_FOLDER.mkdir()
-            except OSError as e:
-                print(f"WinError: {e.winerror}\n", f"\n{e}")
+                        if gathering_event.is_set():
+                            if not fm.is_gathered(nc_file) and not fm.get_errors(nc_file):
+                                fm.gather_nc_file(nc_file)
+
+                            if (
+                                fm.is_gathered(nc_file)
+                                and not (ALL_FOLDER / nc_file.path.name).exists()
+                            ):
+                                shutil.copy2(
+                                    nc_file.path.resolve(),
+                                    (ALL_FOLDER / nc_file.path.name).resolve(),
+                                )
+                            
+                            if fm.is_gathered(nc_file) and nc_file.modified_time != (ALL_FOLDER / nc_file.path.name).resolve().stat().st_mtime:
+                                shutil.copy2(
+                                    nc_file.path.resolve(),
+                                    (ALL_FOLDER / nc_file.path.name).resolve(),
+                                )
+                except FileNotFoundError:
+                    if not ALL_FOLDER.exists():
+                        ALL_FOLDER.mkdir()
+                except OSError as e:
+                    print(f"WinError: {e.winerror}\n", f"\n{e}")
         fm.con.close()
 
     def start_gathering(self) -> None:
