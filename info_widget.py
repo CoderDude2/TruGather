@@ -121,7 +121,7 @@ class InfoWidget(tk.Frame):
             new_text.insert("end", "\n", ("error", "spacer2"))
             new_text.insert(
                 "end",
-                f" {" ".join(gui_error.nc_error.error_type.name.split("_")).upper()} ERROR: {gui_error.nc_error.error_msg}\n",
+                f" {' '.join(gui_error.nc_error.error_type.name.split('_')).upper()} ERROR: {gui_error.nc_error.error_msg}\n",
                 (
                     "error",
                     "issue_message",
@@ -170,25 +170,25 @@ class InfoWidget(tk.Frame):
         data_version: int = 0
 
         previous_connection_status = True
-        
+
         while not self.stop_thread_event.is_set():
             if previous_connection_status != is_internet_connected():
                 previous_connection_status = is_internet_connected()
                 if previous_connection_status is False:
                     print(previous_connection_status)
-                    self.text['state'] = "normal"
-                    self.text.delete('1.0', 'end')
-                    self.text.insert('end', "Internet is not connected...")
-                    self.text['state'] = "disabled"
+                    self.text["state"] = "normal"
+                    self.text.delete("1.0", "end")
+                    self.text.insert("end", "Internet is not connected...")
+                    self.text["state"] = "disabled"
                     continue
                 elif previous_connection_status is True:
-                    self.text['state'] = "normal"
-                    self.text.delete('1.0', 'end')
-                    self.text['state'] = "disabled"
-            
+                    self.text["state"] = "normal"
+                    self.text.delete("1.0", "end")
+                    self.text["state"] = "disabled"
+
             if is_internet_connected():
                 data_version = fm.cur.execute("PRAGMA data_version").fetchone()[0]
-                    
+
                 if data_version != previous_data_value:
                     previous_data_value = data_version
                     self.gui_errors.clear()

@@ -10,6 +10,7 @@ import shutil
 import re
 import threading
 
+
 def is_internet_connected() -> bool:
     conn = httplib.HTTPConnection("192.168.1.100", timeout=5)
     try:
@@ -36,13 +37,13 @@ first_line_regex: re.Pattern = re.compile(
 def date_as_path(date=None) -> Path:
     if date is None:
         date = datetime.datetime.now().date()
-    _day = f"D{"0" + str(date.day) if date.day < 10 else str(date.day)}"
-    _month = f"M{"0" + str(date.month) if date.month < 10 else str(date.month)}"
+    _day = f"D{'0' + str(date.day) if date.day < 10 else str(date.day)}"
+    _month = f"M{'0' + str(date.month) if date.month < 10 else str(date.month)}"
     _year = f"Y{str(date.year)}"
     return Path(_year, _month, _day)
 
 
-NC_FOLDER: Path = ERP_DIR / date_as_path(datetime.date(2025, 3, 6)) / r"1. CAM\3. NC files"
+NC_FOLDER: Path = ERP_DIR / date_as_path() / r"1. CAM\3. NC files"
 # NC_FOLDER: Path = ERP_DIR / "nc"
 ALL_FOLDER: Path = NC_FOLDER / "ALL"
 
@@ -196,8 +197,6 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
                     tool_order_map[tool.tool_identifier].append(tool_index)
                     tool_index += 1
 
-    for k,v in tool_order_map.items():
-        print(k,v)
     missing_operations: bool = False
     for tool in tools_to_check:
         order = tool_order_map[tool.tool_identifier]
@@ -591,17 +590,33 @@ class FileProcessor:
     def __init__(self) -> None:
         self.processing_event = threading.Event()
         self.gathering_event = threading.Event()
+        self.internet_connected_event = threading.Event()
 
         self.gathering_event.clear()
         self.processing_event.set()
+        self.check_connection_thread = threading.Thread(
+            target=self.check_connection,
+            args=(self.internet_connected_event,),
+            daemon=True,
+        )
+
         self.process_files_thread = threading.Thread(
             target=self.process_files,
             args=(
                 self.processing_event,
                 self.gathering_event,
+                self.internet_connected_event,
             ),
         )
+        self.check_connection_thread.start()
         self.process_files_thread.start()
+
+    def check_connection(self, internet_connected_event: threading.Event):
+        while True:
+            if is_internet_connected():
+                internet_connected_event.set()
+            else:
+                internet_connected_event.clear()
 
     def gather_all_files(self) -> None:
         fm = FileManager()
@@ -628,7 +643,7 @@ class FileProcessor:
                     )
         except FileNotFoundError:
             print("The internet may be disconnected.")
-            
+
         fm.con.close()
 
     def gather_all_asc_files(self) -> None:
@@ -671,23 +686,26 @@ class FileProcessor:
             fm.con.close()
 
     def process_files(
-        self, processing_event: threading.Event, gathering_event: threading.Event
+        self,
+        processing_event: threading.Event,
+        gathering_event: threading.Event,
+        internet_connected_event: threading.Event,
     ) -> None:
         fm = FileManager()
 
         while processing_event.is_set():
-                if not is_internet_connected():
-                        continue
+            if internet_connected_event.is_set():
                 try:
                     for file in get_nc_files(NC_FOLDER):
                         if not fm.is_tracked(file):
-                            if not is_internet_connected():
+                            if not internet_connected_event.is_set():
+                                print("Not connected")
                                 break
                             fm.add_to_database(file)
 
                     for nc_file in fm.get_all_nc_files():
-                        if not is_internet_connected():
-                                break
+                        if not internet_connected_event.is_set():
+                            break
                         if not nc_file.path.exists():
                             fm.delete_nc_file(nc_file)
                             continue
@@ -703,7 +721,9 @@ class FileProcessor:
                             continue
 
                         if gathering_event.is_set():
-                            if not fm.is_gathered(nc_file) and not fm.get_errors(nc_file):
+                            if not fm.is_gathered(nc_file) and not fm.get_errors(
+                                nc_file
+                            ):
                                 fm.gather_nc_file(nc_file)
 
                             if (
@@ -714,8 +734,15 @@ class FileProcessor:
                                     nc_file.path.resolve(),
                                     (ALL_FOLDER / nc_file.path.name).resolve(),
                                 )
-                            
-                            if fm.is_gathered(nc_file) and nc_file.modified_time != (ALL_FOLDER / nc_file.path.name).resolve().stat().st_mtime:
+
+                            if (
+                                fm.is_gathered(nc_file)
+                                and nc_file.modified_time
+                                != (ALL_FOLDER / nc_file.path.name)
+                                .resolve()
+                                .stat()
+                                .st_mtime
+                            ):
                                 shutil.copy2(
                                     nc_file.path.resolve(),
                                     (ALL_FOLDER / nc_file.path.name).resolve(),
