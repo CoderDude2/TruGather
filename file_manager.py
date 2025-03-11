@@ -198,7 +198,7 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
 
     missing_operations: bool = False
     for tool in tools_to_check:
-        order = tool_order_map[tool.tool_identifier]
+        order: list[int] = tool_order_map[tool.tool_identifier]
         if len(order) < tool.min_count:
             err_msg: str = f"{tool.tool_identifier} count is {len(order)}, should have at least {tool.min_count}"
             if tool.max_count and tool.max_count == tool.min_count:
