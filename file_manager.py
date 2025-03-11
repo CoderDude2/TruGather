@@ -11,17 +11,7 @@ import re
 import threading
 
 
-def is_internet_connected() -> bool:
-    conn = httplib.HTTPConnection("192.168.1.100", timeout=5)
-    try:
-        conn.request("HEAD", "/")
-        return True
-    except Exception:
-        return False
-    finally:
-        conn.close()
-
-
+TODAYS_DATE: str = datetime.datetime.isoformat(datetime.datetime.now())[:10]
 BASE_DIR: Path = Path(__file__).resolve().parent
 ERP_DIR: Path = Path(r"\\192.168.1.100\Trubox\####ERP_RM####")
 # ERP_DIR: Path = BASE_DIR
@@ -77,6 +67,17 @@ class ErrorType(Enum):
 class NCError:
     error_type: ErrorType
     error_msg: str | None = None
+
+
+def is_internet_connected() -> bool:
+    conn = httplib.HTTPConnection("192.168.1.100", timeout=5)
+    try:
+        conn.request("HEAD", "/")
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
 
 
 def check_file(file_path: Path) -> tuple[NCError, ...]:
@@ -301,6 +302,15 @@ class FileManager:
         self.cur.execute(
             (
                 "CREATE TABLE "
+                "IF NOT EXISTS date ("
+                "date_id INTEGER PRIMARY KEY UNIQUE,"
+                "current_date TEXT NOT NULL UNIQUE)"
+            )
+        )
+
+        self.cur.execute(
+            (
+                "CREATE TABLE "
                 "IF NOT EXISTS nc_files ("
                 "nc_file_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                 "nc_file_path TEXT NOT NULL UNIQUE,"
@@ -342,6 +352,34 @@ class FileManager:
                 "FOREIGN KEY(nc_file_id) REFERENCES nc_files(nc_file_id))"
             )
         )
+
+        self.con.commit()
+
+        res = self.cur.execute(
+            "SELECT current_date from date WHERE date_id = ?", (1,)
+        ).fetchone()
+        try:
+            self.cur.execute(
+                "INSERT INTO date (date_id, current_date) VALUES (?, ?)",
+                (
+                    1,
+                    TODAYS_DATE,
+                ),
+            )
+        except sqlite3.IntegrityError:
+            if res[0] != TODAYS_DATE:
+                self.cur.execute(
+                    "UPDATE date SET current_date = ? WHERE date_id = ?",
+                    (
+                        TODAYS_DATE,
+                        1,
+                    ),
+                )
+                self.cur.execute("DELETE FROM duplicates")
+                self.cur.execute("DELETE FROM errors")
+                self.cur.execute("DELETE FROM gathered_nc_files")
+                self.cur.execute("DELETE FROM nc_files")
+        self.con.commit()
 
     def get_file_id(self, nc_file: NCFile) -> int | None:
         file_id = self.cur.execute(
@@ -696,12 +734,6 @@ class FileProcessor:
         while processing_event.is_set():
             if internet_connected_event.is_set():
                 try:
-                    for file in get_nc_files(NC_FOLDER):
-                        if not fm.is_tracked(file):
-                            if not internet_connected_event.is_set():
-                                break
-                            fm.add_to_database(file)
-
                     for nc_file in fm.get_all_nc_files():
                         if not internet_connected_event.is_set():
                             break
@@ -746,6 +778,12 @@ class FileProcessor:
                                     nc_file.path.resolve(),
                                     (ALL_FOLDER / nc_file.path.name).resolve(),
                                 )
+                    for file in get_nc_files(NC_FOLDER):
+                        if not fm.is_tracked(file):
+                            if not internet_connected_event.is_set():
+                                break
+                            fm.add_to_database(file)
+
                 except FileNotFoundError:
                     if not ALL_FOLDER.exists():
                         ALL_FOLDER.mkdir()
