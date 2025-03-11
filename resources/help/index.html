@@ -19,7 +19,7 @@
 
             <dl class="controls-info">
                 <dt>Auto-Gather</dt>
-                <dd>- When enabled, the program will continuously checks the NC folder for valid PRG files to be gathered.</dd>
+                <dd>- When enabled, the program will continuously check the NC folder for valid PRG files to be gathered.</dd>
 
                 <dt>Gather ALL NC</dt>
                 <dd>- When pressed, the program will look through the NC folder once and gather all valid PRG files.</dd>
@@ -34,38 +34,50 @@
         <section>
             <h2>How the System Works</h2>
 
-            <p>The progam first scans all folders within the NC folder for new NC files that are not within the program's database.</p>
-            <p>If it finds a new file, the file will be checked for errors, and whether it is a duplicate or not.</p>
-            <p>If the file has no errors, and isn't a duplicate it will be copied to the ALL folder.</p>
-            <p>If the file is edited and reuploaded, it will be checked again for errors. If the program finds errors in the updated file, it will remove the corresponding file from the NC folder.</p>
-            <p>If the file is updated again without errors, it will copy the file to the ALL folder again.</p>
+            <p>
+                The progam first scans all folders within the NC folder for new NC files that are not within the program's database.
+                If it finds a new file, the file will be checked for errors, and whether it is a duplicate or not.
+                If the file has no errors and isn't a duplicate, it is then added to the database and copied to the ALL folder.
+            </p>
             <br/>
-            <p>If a file is deleted, the corresponding file in the ALL folder will also be deleted.</p>
-            <p>If the deleted file had any duplicates, the program will choose the first duplicate without errors to replace it. If no duplicates exist without errors, it will choose the first one it finds.</p>
+            <p>
+                If a file is edited and reuploaded, it will be checked again for errors. If the program finds errors in the updated file and it is already gathered, it will remove the corresponding file from the NC folder.
+                If the file is updated again without errors, it will copy the file to the ALL folder again.
+            </p>
+            <br/>
+            <p>
+                If a file is deleted, the corresponding file in the ALL folder will also be deleted.
+                If the deleted file had any duplicates, the program will choose the first duplicate without errors to replace it. 
+                If there is no duplicate without errors, it will choose the first one it finds.
+            </p>
         </section>
 
         <section class="errors-section">
             <h2>The Error Panel</h2>
-
-            <p>The program continuously scans every file in the NC folder for errors. When the program encounters an error, it is displayed on the error panel. Below is an example of an error message.</p>
-
+            
+            <p>The program continuously scans every file in the NC folder for errors. When the program encounters an error, it is displayed on the error panel.</p>
             <div class="img-container">
-                <img src="../images/error.png" alt="Error example" class="error-img">
+                <img src="../images/error_panel.png" alt="Error example" class="error-img">
             </div>
             <p>Each message includes the file name, the location of the file, and what is wrong with the file. Right clicking an error will give you the option to open the location of the file.</p>
 
             <h3>Errors</h3>
+                <div class="img-container">
+                    <img src="../images/error.png" alt="Error example" class="error-img">
+                </div>
                 <p>An error is shown if the file being checked contains a major issue that prevents it from being gathered. Below is an explanation of each error type.</p>
 
                 <dl>
                     <dt>Missing Subprogram Error</dt>
-                    <dd>- Shown if the file is missing the $0, $1, or $2 operation.</dd>
+                    <dd>- Shown if the file is missing the <b>$0</b>, <b>$1</b>, or <b>$2</b> operation.</dd>
 
                     <dt>Invalid Name Error</dt>
                     <dd>- Shown if the file does not meet proper naming conventions.</dd>
+                    <dd>- <b><u>File Name Format:</u></b> <b>####.prg</b>, <b>#</b> is a digit from 0-9.</dd>
+
 
                     <dt>Part Length Error</dt>
-                    <dd>- If the part-length and the cut-off differ by 0.015 or more.</dd>
+                    <dd>- If the part-length and the cut-off differ by <b>0.015 mm</b> or more.</dd>
 
                     <dt>Missing UG Values Error</dt>
                     <dd>- If the case is special and does not contain UG values.</dd>
@@ -80,6 +92,9 @@
                     <dd>- If an operation is not in the correct order. All tools must have the correct count before this error can be shown.</dd>
                 </dl>
             <h3>Warnings</h3>
+            <div class="img-container">
+                <img src="../images/warning.png" alt="Error example" class="error-img">
+            </div>
             <p>A warning is shown if the file being checked contains a minor issue, but will still be gathered. Currently only one warning type exists.</p>
 
             <dl>
