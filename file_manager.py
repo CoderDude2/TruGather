@@ -83,12 +83,12 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
     errors: list[NCError] = []
     part_length: float = 0
     cut_off: float = 0
+    case_type: str = ""
+    contains_text: bool = False
 
     with file_path.open("r") as file:
         first_line = file.readline()
         contents = file.readlines()
-
-    case_type: str = ""
 
     if "ASC" in first_line:
         case_type = "ASC"
@@ -190,6 +190,9 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
 
         if "#105=" in line:
             contains_ug_105 = True
+        
+        if "TEXT" in line.upper():
+            contains_text = True
 
         for tool in tools_to_check:
             if tool.tool_identifier in line:
@@ -248,7 +251,7 @@ def check_file(file_path: Path) -> tuple[NCError, ...]:
     if not prg_regex.match(file_path.name):
         errors.append(NCError(ErrorType.INVALID_NAME, "Incorrect file name."))
 
-    if file_path.name == "4001.prg" and case_type == "ASC":
+    if file_path.name == "4001.prg" and case_type == "ASC" and contains_text is False:
         errors.append(
             NCError(ErrorType.INVALID_NAME, "4001 is not a valid name for ASC files.")
         )
