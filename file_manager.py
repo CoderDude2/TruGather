@@ -12,6 +12,7 @@ import threading
 
 
 TODAYS_DATE: str = datetime.datetime.isoformat(datetime.datetime.now())[:10]
+# TODAYS_DATE: str = "2025-03-10"
 BASE_DIR: Path = Path(__file__).resolve().parent
 ERP_DIR: Path = Path(r"\\192.168.1.100\Trubox\####ERP_RM####")
 
@@ -356,7 +357,9 @@ class FileManager:
         res = self.cur.execute(
             "SELECT current_date from date WHERE date_id = ?", (1,)
         ).fetchone()
-        try:
+        
+        if not res:
+            print("Adding date")
             self.cur.execute(
                 "INSERT INTO date (date_id, current_date) VALUES (?, ?)",
                 (
@@ -364,20 +367,24 @@ class FileManager:
                     TODAYS_DATE,
                 ),
             )
-        except sqlite3.IntegrityError:
-            if res[0] != TODAYS_DATE:
-                self.cur.execute(
-                    "UPDATE date SET current_date = ? WHERE date_id = ?",
-                    (
-                        TODAYS_DATE,
-                        1,
-                    ),
-                )
-                self.cur.execute("DELETE FROM duplicates")
-                self.cur.execute("DELETE FROM errors")
-                self.cur.execute("DELETE FROM gathered_nc_files")
-                self.cur.execute("DELETE FROM nc_files")
-        self.con.commit()
+            self.con.commit()
+            return
+        
+        if res[0] != TODAYS_DATE:
+            print("Deleting data")
+            print(res[0])
+            self.cur.execute(
+                "UPDATE date SET current_date = ? WHERE date_id = ?",
+                (
+                    TODAYS_DATE,
+                    1,
+                ),
+            )
+            self.cur.execute("DELETE FROM duplicates")
+            self.cur.execute("DELETE FROM errors")
+            self.cur.execute("DELETE FROM gathered_nc_files")
+            self.cur.execute("DELETE FROM nc_files")
+            self.con.commit()
 
     def get_file_id(self, nc_file: NCFile) -> int | None:
         file_id = self.cur.execute(
