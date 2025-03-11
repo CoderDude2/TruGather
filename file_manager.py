@@ -14,7 +14,6 @@ import threading
 TODAYS_DATE: str = datetime.datetime.isoformat(datetime.datetime.now())[:10]
 BASE_DIR: Path = Path(__file__).resolve().parent
 ERP_DIR: Path = Path(r"\\192.168.1.100\Trubox\####ERP_RM####")
-# ERP_DIR: Path = BASE_DIR
 
 prg_regex: re.Pattern = re.compile(r"(\d{4,})([A-Za-z.]+)")
 asc_folder_regex: re.Pattern = re.compile(r"\d+.\d+_ASC_\((\d+)\)")
@@ -34,7 +33,6 @@ def date_as_path(date=None) -> Path:
 
 
 NC_FOLDER: Path = ERP_DIR / date_as_path() / r"1. CAM\3. NC files"
-# NC_FOLDER: Path = ERP_DIR / "nc"
 ALL_FOLDER: Path = NC_FOLDER / "ALL"
 
 DB_FILE: Path = BASE_DIR / "files.db"
