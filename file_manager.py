@@ -68,15 +68,14 @@ class NCError:
 
 
 def is_internet_connected() -> bool:
-    return True
-    # conn = httplib.HTTPConnection("192.168.1.100", timeout=5)
-    # try:
-    #     conn.request("HEAD", "/")
-    #     return True
-    # except Exception:
-    #     return False
-    # finally:
-    #     conn.close()
+    conn = httplib.HTTPConnection("192.168.1.100", timeout=5)
+    try:
+        conn.request("HEAD", "/")
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
     
 
 
@@ -363,7 +362,6 @@ class FileManager:
         ).fetchone()
         
         if not res:
-            print("Adding date")
             self.cur.execute(
                 "INSERT INTO date (date_id, current_day) VALUES (?, ?)",
                 (
@@ -375,8 +373,6 @@ class FileManager:
             return
         
         if res[0] != TODAYS_DATE:
-            print("Deleting data")
-            print(res[0])
             self.cur.execute(
                 "UPDATE date SET current_day = ? WHERE date_id = ?",
                 (
@@ -445,10 +441,9 @@ class FileManager:
                     self.cur.execute(
                         "INSERT INTO duplicates (nc_file_id) VALUES (?)", (file_id,)
                     )
-            print(f"{file_path} added to database")
             self.con.commit()
         except PermissionError:
-            print("File is being used by another process")
+            pass
 
     def delete_nc_file(self, nc_file: NCFile) -> None:
         file_id = self.get_file_id(nc_file)
@@ -465,7 +460,6 @@ class FileManager:
             "DELETE FROM gathered_nc_files WHERE nc_file_id = ?", (file_id,)
         )
         self.cur.execute("DELETE FROM nc_files WHERE nc_file_id = ?", (file_id,))
-        print(f"{nc_file.path} removed from database")
 
         duplicate_ids = [
             row[0]
@@ -488,10 +482,8 @@ class FileManager:
                 self.cur.execute(
                     "DELETE FROM duplicates WHERE nc_file_id = ?", (duplicate_id,)
                 )
-                print("Removed file without errors")
                 self.con.commit()
                 return
-        print("Removed file with errors")
         self.cur.execute(
             "DELETE FROM duplicates WHERE nc_file_id = ?", (duplicate_ids[0],)
         )
@@ -521,10 +513,9 @@ class FileManager:
                 "INSERT INTO gathered_nc_files (gathered_nc_file_path, nc_file_id) VALUES (?, ?)",
                 (str(gathered_path.resolve()), file_id),
             )
-            print(f"{nc_file.path} gathered")
             self.con.commit()
         except sqlite3.IntegrityError:
-            print(f"{nc_file.path} is a duplicate")
+            pass
 
     def remove_nc_from_gather(self, nc_file: NCFile) -> None:
         file_id = self.get_file_id(nc_file)
@@ -689,7 +680,7 @@ class FileProcessor:
                         (ALL_FOLDER / nc_file.path.name).resolve(),
                     )
         except FileNotFoundError:
-            print("The internet may be disconnected.")
+            pass
 
         fm.con.close()
 
@@ -751,7 +742,6 @@ class FileProcessor:
                             continue
 
                         if fm.is_modified(nc_file):
-                            print(nc_file, "is modified")
                             fm.update_nc_file(nc_file)
 
                         if fm.is_gathered(nc_file) and fm.get_errors(nc_file):
@@ -796,8 +786,8 @@ class FileProcessor:
                 except FileNotFoundError:
                     if not ALL_FOLDER.exists():
                         ALL_FOLDER.mkdir()
-                except OSError as e:
-                    print(f"WinError: {e.winerror}\n", f"\n{e}")
+                except OSError:
+                    pass
         fm.con.close()
 
     def start_gathering(self) -> None:
