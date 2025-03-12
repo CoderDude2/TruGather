@@ -12,7 +12,6 @@ import threading
 
 
 TODAYS_DATE: str = datetime.datetime.isoformat(datetime.datetime.now())[:10]
-# TODAYS_DATE: str = "2025-03-10"
 BASE_DIR: Path = Path(__file__).resolve().parent
 ERP_DIR: Path = Path(r"\\192.168.1.100\Trubox\####ERP_RM####")
 
@@ -69,14 +68,16 @@ class NCError:
 
 
 def is_internet_connected() -> bool:
-    conn = httplib.HTTPConnection("192.168.1.100", timeout=5)
-    try:
-        conn.request("HEAD", "/")
-        return True
-    except Exception:
-        return False
-    finally:
-        conn.close()
+    return True
+    # conn = httplib.HTTPConnection("192.168.1.100", timeout=5)
+    # try:
+    #     conn.request("HEAD", "/")
+    #     return True
+    # except Exception:
+    #     return False
+    # finally:
+    #     conn.close()
+    
 
 
 def check_file(file_path: Path) -> tuple[NCError, ...]:
@@ -306,7 +307,7 @@ class FileManager:
                 "CREATE TABLE "
                 "IF NOT EXISTS date ("
                 "date_id INTEGER PRIMARY KEY UNIQUE,"
-                "current_date TEXT NOT NULL UNIQUE)"
+                "current_day TEXT NOT NULL UNIQUE)"
             )
         )
 
@@ -358,13 +359,13 @@ class FileManager:
         self.con.commit()
 
         res = self.cur.execute(
-            "SELECT current_date from date WHERE date_id = ?", (1,)
+            "SELECT current_day from date WHERE date_id = ?", (1,)
         ).fetchone()
         
         if not res:
             print("Adding date")
             self.cur.execute(
-                "INSERT INTO date (date_id, current_date) VALUES (?, ?)",
+                "INSERT INTO date (date_id, current_day) VALUES (?, ?)",
                 (
                     1,
                     TODAYS_DATE,
@@ -377,7 +378,7 @@ class FileManager:
             print("Deleting data")
             print(res[0])
             self.cur.execute(
-                "UPDATE date SET current_date = ? WHERE date_id = ?",
+                "UPDATE date SET current_day = ? WHERE date_id = ?",
                 (
                     TODAYS_DATE,
                     1,
@@ -402,7 +403,7 @@ class FileManager:
 
     def is_tracked(self, file_path: Path) -> bool:
         res = self.cur.execute(
-            "SELECT nc_file_id FROM nc_files WHERE nc_file_path = ?", (str(file_path),)
+            "SELECT nc_file_id FROM nc_files WHERE nc_file_path = ?", (str(file_path.resolve()),)
         )
         if not res.fetchone():
             return False
