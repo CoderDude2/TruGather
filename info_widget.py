@@ -16,13 +16,6 @@ class GUIError:
     line_start: int = 0
     line_end: int = 0
 
-    def __eq__(self, other):
-        return (
-            self.file == other.file
-            and self.location == other.location
-            and self.issue_type == other.issue_type
-        )
-
 
 @dataclass
 class GUIDuplicate:
