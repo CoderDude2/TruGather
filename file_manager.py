@@ -34,8 +34,6 @@ def date_as_path(date=None) -> Path:
 
 NC_FOLDER: Path = ERP_DIR / date_as_path() / r"1. CAM\3. NC files"
 ALL_FOLDER: Path = NC_FOLDER / "ALL"
-# NC_FOLDER: Path = BASE_DIR / "nc"
-# ALL_FOLDER: Path = BASE_DIR / "nc" / "ALL"
 
 DB_FILE: Path = BASE_DIR / "files.db"
 
@@ -640,10 +638,9 @@ class FileProcessor:
     def gather_all_files(self) -> None:
         fm = FileManager()
         try:
-            if not is_internet_connected():
-                fm.con.close()
-                return
             for nc_file in fm.get_all_nc_files():
+                if not is_internet_connected():
+                    break
                 if fm.is_gathered(nc_file):
                     gathered_nc_file_path: Path = (
                         ALL_FOLDER / nc_file.path.name
@@ -697,6 +694,10 @@ class FileProcessor:
 
             asc_folder.mkdir(exist_ok=True)
             for nc_file in fm.get_all_nc_files():
+                if not is_internet_connected():
+                    break
+                if fm.get_errors(nc_file):
+                    continue
                 with nc_file.path.open("r") as f:
                     first_line = f.readline()
 
@@ -713,6 +714,8 @@ class FileProcessor:
             )
         except FileNotFoundError:
             fm.con.close()
+
+        fm.con.close()
 
     def process_files(
         self,
@@ -745,7 +748,6 @@ class FileProcessor:
                             fm.update_nc_file(nc_file)
 
                         if fm.can_gather(nc_file):
-                            print("gathering")
                             fm.gather_nc_file(nc_file)
 
                         if gathering_event.is_set() and not fm.get_errors(nc_file):
@@ -770,7 +772,6 @@ class FileProcessor:
                                 break
                             fm.add_to_database(file)
                             if fm.can_gather(file):
-                                print("gathering")
                                 fm.gather_nc_file(file)
 
                 except FileNotFoundError:
