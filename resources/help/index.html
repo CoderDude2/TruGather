@@ -19,15 +19,15 @@
 
             <dl class="controls-info">
                 <dt>Auto-Gather</dt>
-                <dd>- When enabled, the program will continuously check the NC folder for valid PRG files to be gathered.</dd>
+                <dd> - When enabled, the program will continuously check the NC folder for valid PRG files to be gathered.</dd>
 
                 <dt>Gather ALL NC</dt>
-                <dd>- When pressed, the program will look through the NC folder once and gather all valid PRG files.</dd>
+                <dd> - When pressed, the program will look through the NC folder once and gather all valid PRG files.</dd>
 
                 <dt>Gather ALL ASC</dt>
-                <dd>- When pressed, the program will only gather valid ASC files.</dd>
-                <dd>- When gathering it will create a new ASC folder, the folder will have the date and the amount of files contained within the folder.</dd>
-                <dd>- <b><u>ASC folder format:</u> <span style="color: rgb(67, 147, 208);">month</span>.<span style="color: rgb(202, 88, 88);">day</span>_ASC_(<span style="color: rgb(75, 154, 72);">no. of files</span>)</b></dd>
+                <dd> - When pressed, the program will only gather valid ASC files.</dd>
+                <dd> - When gathering it will create a new ASC folder, the folder will have the date and the amount of files contained within the folder.</dd>
+                <dd> - <b><u>ASC folder format:</u> <span style="color: rgb(67, 147, 208);">month</span>.<span style="color: rgb(202, 88, 88);">day</span>_ASC_(<span style="color: rgb(75, 154, 72);">no. of files</span>)</b></dd>
             </dl>
         </section>
 
@@ -36,19 +36,19 @@
 
             <p>
                 The progam first scans all folders within the NC folder for new NC files that are not within the program's database.
-                If it finds a new file, the file will be checked for errors, and whether it is a duplicate or not.
-                If the file has no errors and isn't a duplicate, it is then added to the database and copied to the ALL folder.
+                If it finds a new file, the file will be checked for errors.
+                Once checked, it adds the file to the program database.
             </p>
             <br/>
             <p>
-                If a file is edited and reuploaded, it will be checked again for errors. If the program finds errors in the updated file and it is already gathered, it will remove the corresponding file from the NC folder.
-                If the file is updated again without errors, it will copy the file to the ALL folder again.
+                If there is more than one of any given NC file, the program will choose the NC File with the newest timestamp to be gathered.
+                If the file has errors, it will choose the next file with the most recent timestamp without errors.
+                If no file exists without errors, the program will wait till either a file is edited or a new one without errors is uploaded.
             </p>
             <br/>
             <p>
                 If a file is deleted, the corresponding file in the ALL folder will also be deleted.
-                If the deleted file had any duplicates, the program will choose the first duplicate without errors to replace it. 
-                If there is no duplicate without errors, it will choose the first one it finds.
+                If the deleted file had any duplicates, the program will choose the newest duplicate added to the database that does not contain errors.
             </p>
         </section>
 
