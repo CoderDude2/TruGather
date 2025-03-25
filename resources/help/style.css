@@ -16,7 +16,7 @@ body{
 main{
     padding: 1rem;
     margin: auto;
-    width: 80%;
+    width: 90%;
 }
 
 img, picture, video, canvas, svg {
@@ -32,13 +32,9 @@ p, h1, h2, h3, h4, h5, h6 {
     overflow-wrap: break-word;
 }
 
-.gather-app-img-1{
-    width: 25%;
-}
-
-.controls-section{
+section {
     border: 1px solid black;
-    border-radius: 2em;
+    border-radius: calc(1.618em / 2);
     padding: 1em;
     margin-top: 1em;
 }
@@ -58,13 +54,6 @@ dd{
     margin-bottom: 0.5em;
 }
 
-.errors-section{
-    border: 1px solid black;
-    border-radius: 2em;
-    padding: 1em;
-    margin-top: 1em;
-}
-
 .errors-section h3{
     margin-top: 0.5em;
 }
@@ -75,13 +64,6 @@ dd{
 
 .errors-section p{
     margin-top: 0.5em;
-}
-
-.error-img{
-    width: 95%;
-    margin: auto;
-    margin-top: 1em;
-    margin-bottom: 1em;
 }
 
 #theme-toggle{
@@ -97,7 +79,7 @@ dd{
 #theme-toggle:hover{
     background-color: black;
     color: white;
-    
+    cursor: pointer;
 }
 
 .dark-theme{
@@ -105,11 +87,7 @@ dd{
     color: white;
 }
 
-.dark-theme .errors-section{
-    border-color: white;
-}
-
-.dark-theme .controls-section{
+.dark-theme section {
     border-color: white;
 }
 
@@ -123,8 +101,8 @@ dd{
     color: black;
 }
 
-.description-container{
-    display: flex;
-    justify-content: space-evenly;
-    gap: 1em;
+.img-container > img{
+    max-width: 500px;
+    width: 75%;
+    padding: 1em;
 }

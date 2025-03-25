@@ -8,3 +8,5 @@
 /nc
 *.json
 .DS_Store
+*.db
+*.db-journal
