@@ -44,11 +44,16 @@ class StatPanel(tk.Frame):
         # threading.Thread(target=self.update_stat_panel, daemon=True).start()
 
     def update_stat_panel(self) -> None:
-        associate = "Isaac"
-        count = 20
-        if associate not in self.associate_lbl_map.keys():
-            self.associate_lbl_map[associate] = tk.Label(self, text=f"{associate}: {count}")
-            self.associate_lbl_map[associate].pack()
+        fm = FileManager()
+        # previous_data_value: int = 0
+        # data_version: int = 0
+        print(fm.get_associate_counts())
+        # count = val 
+        # if associate not in self.associate_lbl_map.keys():
+        #     self.associate_lbl_map[associate] = tk.Label(self, text=f"{associate}: {count}")
+        #     self.associate_lbl_map[associate].pack()
+        #     return
+        # self.associate_lbl_map[associate].configure(text=f"{associate}: {count}")
         #     self.a[0].set(self.a[0].get() + 1)
         #     time.sleep(3)
 

@@ -440,7 +440,16 @@ class FileManager:
         return case_count
 
     def get_associate_counts(self) -> dict[str, int]:
-        return dict()
+        associate_map: dict[str, int] = {}
+        
+        for folder in NC_FOLDER.iterdir():
+            if not associate_map.get(folder.name):
+                associate_map[folder.name] = 0
+
+            for _ in folder.rglob("*.prg", case_sensitive=False):
+                associate_map[folder.name] += 1
+
+        return associate_map 
 
     def add_to_database(self, nc_file: NCFile) -> None:
         try:
