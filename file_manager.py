@@ -37,9 +37,16 @@ ALL_FOLDER: Path = NC_FOLDER / "ALL"
 
 DB_FILE: Path = BASE_DIR / "files.db"
 
+class CaseType(Enum):
+    DS = 1
+    ASC = 2
+    TLOC = 3
+    AOT = 4
+    AOTP = 5
 
 class NCFile(NamedTuple):
     path: Path
+    case_type: CaseType
     modified_time: float
 
 
