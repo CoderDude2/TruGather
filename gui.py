@@ -1,8 +1,10 @@
 import tkinter as tk
 import os
+import time
+import threading
 from pathlib import Path
 
-from file_manager import FileProcessor
+from file_manager import FileProcessor, FileManager
 import info_widget
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -27,6 +29,32 @@ class MenuBar(tk.Menu):
         elif os.name == "posix":
             os.system(f"open {os.path.join(BASE_DIR, 'resources/help/index.html')}")
 
+class StatPanel(tk.Frame):
+    def __init__(self, master = None) -> None:
+        super().__init__(master) 
+
+        self.case_lbl_map: dict[str, tk.Label] = {}
+        self.associate_lbl_map: dict[str, tk.Label] = {}
+
+        self.a:list[tk.IntVar] = [] 
+        self.a.append(tk.IntVar(value=0))
+
+        self.update_stat_panel()
+        # self.stop_thread_event = threading.Event()
+        # threading.Thread(target=self.update_stat_panel, daemon=True).start()
+
+    def update_stat_panel(self) -> None:
+        associate = "Isaac"
+        count = 20
+        if associate not in self.associate_lbl_map.keys():
+            self.associate_lbl_map[associate] = tk.Label(self, text=f"{associate}: {count}")
+            self.associate_lbl_map[associate].pack()
+        #     self.a[0].set(self.a[0].get() + 1)
+        #     time.sleep(3)
+
+    def stop_stat_pane(self) -> None:
+        ...
+        # self.stop_thread_event.set()
 
 class App(tk.Tk):
     def __init__(self) -> None:
@@ -67,12 +95,14 @@ class App(tk.Tk):
             pady=20,
             command=self.fp.gather_all_asc_files,
         )
+        self.stat_panel: StatPanel = StatPanel(self.control_frame)
 
         self.info_widget = info_widget.InfoWidget()
 
         self.auto_gather_checkbutton.pack(side=tk.TOP)
         self.gather_prg_button.pack(fill=tk.X, side=tk.TOP)
         self.gather_asc_button.pack(fill=tk.X, side=tk.TOP)
+        self.stat_panel.pack(fill=tk.X, side=tk.TOP)
 
         self.control_frame.grid(row=0, column=0, sticky="nsew")
         self.info_widget.grid(row=0, column=1, sticky="nsew")
@@ -96,4 +126,5 @@ class App(tk.Tk):
     def on_close(self) -> None:
         self.fp.stop_processing()
         self.info_widget.close_connection()
+        self.stat_panel.stop_stat_pane()
         self.destroy()

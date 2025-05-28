@@ -409,6 +409,39 @@ class FileManager:
             nc_files.append(NCFile(Path(row[0]), row[1]))
         return nc_files
 
+    def get_case_counts(self) -> dict[str, int]:
+        nc_files = self.get_all_nc_files()
+        case_count: dict[str, int] = {}
+
+        case_count["ASC"] = 0
+        case_count["TL/AOT"] = 0
+        case_count["DS"] = 0
+        case_count["AOTP"] = 0
+
+        for nc_file in nc_files:
+            with nc_file.path.open("r") as file:
+                first_line = file.readline()
+            first_line = "ASC"
+            if "ASC" in first_line:
+                case_count["ASC"] += 1
+            elif (
+                "T-L" in first_line
+                or "TLCS" in first_line
+                or "TLOC" in first_line
+                or "TL14" in first_line
+            ):
+                case_count["TL/AOT"] += 1
+            elif "AOT14" in first_line:
+                case_count["TL/AOT"] += 1
+            elif "ATPL" in first_line:
+                case_count["AOTP"] += 1
+            else:
+                case_count["DS"] += 1
+        return case_count
+
+    def get_associate_counts(self) -> dict[str, int]:
+        return dict()
+
     def add_to_database(self, nc_file: NCFile) -> None:
         try:
             self.cur.execute(
