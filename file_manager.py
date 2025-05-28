@@ -421,7 +421,6 @@ class FileManager:
         for nc_file in nc_files:
             with nc_file.path.open("r") as file:
                 first_line = file.readline()
-            first_line = "ASC"
             if "ASC" in first_line:
                 case_count["ASC"] += 1
             elif (

@@ -34,7 +34,9 @@ class StatPanel(tk.Frame):
         super().__init__(master) 
 
         self.case_lbl_map: dict[str, tk.Label] = {}
-        self.associate_lbl_map: dict[str, tk.Label] = {}
+        self.associate_lbl_map: dict[str, list[tk.Label]] = {}
+
+        self.grid_columnconfigure(0, weight=1)
 
         self.a:list[tk.IntVar] = [] 
         self.a.append(tk.IntVar(value=0))
@@ -44,18 +46,27 @@ class StatPanel(tk.Frame):
 
     def update_stat_panel(self) -> None:
         fm = FileManager()
-        previous_data_version: int = 0
-        while not self.stop_thread_event.is_set(): 
-            data_version: int = fm.cur.execute("PRAGMA data_version").fetchone()[0]
+        row: int = 0
 
-            if data_version != previous_data_version:
-                previous_data_version = data_version
-                for associate, count in fm.get_associate_counts().items():
+        previous_associate_data: dict[str, int] = {}
+        while not self.stop_thread_event.is_set(): 
+            associate_data = fm.get_associate_counts()
+
+            if associate_data != previous_associate_data:
+                previous_associate_data = associate_data
+                for associate, count in associate_data.items():
                     if associate not in self.associate_lbl_map.keys():
-                        self.associate_lbl_map[associate] = tk.Label(self, text=f"{associate}: {count}")
-                        self.associate_lbl_map[associate].pack()
+                        associate_label: tk.Label = tk.Label(self, text=associate)
+                        count_label: tk.Label = tk.Label(self, text=count)
+
+                        associate_label.grid(row=row, column=0, sticky='w')
+                        count_label.grid(row=row, column=1, sticky='e', padx=5)
+
+                        self.associate_lbl_map[associate] = [associate_label, count_label]
+
+                        row += 1
                         continue
-                    self.associate_lbl_map[associate].configure(text=f"{associate}: {count}")
+                    self.associate_lbl_map[associate][1].configure(text=count)
         fm.con.close()
 
     def stop_stat_pane(self) -> None:
@@ -66,7 +77,7 @@ class App(tk.Tk):
         super().__init__()
         self.fp: FileProcessor = FileProcessor()
 
-        self.geometry("445x275")
+        self.geometry("445x370")
         self.minsize(445, 275)
         self.iconbitmap(os.path.join(BASE_DIR, "resources", "icons", "tru-gather.ico"))
 
