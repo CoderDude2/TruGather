@@ -39,27 +39,27 @@ class StatPanel(tk.Frame):
         self.a:list[tk.IntVar] = [] 
         self.a.append(tk.IntVar(value=0))
 
-        self.update_stat_panel()
-        # self.stop_thread_event = threading.Event()
-        # threading.Thread(target=self.update_stat_panel, daemon=True).start()
+        self.stop_thread_event = threading.Event()
+        threading.Thread(target=self.update_stat_panel, daemon=True).start()
 
     def update_stat_panel(self) -> None:
         fm = FileManager()
-        # previous_data_value: int = 0
-        # data_version: int = 0
-        print(fm.get_associate_counts())
-        # count = val 
-        # if associate not in self.associate_lbl_map.keys():
-        #     self.associate_lbl_map[associate] = tk.Label(self, text=f"{associate}: {count}")
-        #     self.associate_lbl_map[associate].pack()
-        #     return
-        # self.associate_lbl_map[associate].configure(text=f"{associate}: {count}")
-        #     self.a[0].set(self.a[0].get() + 1)
-        #     time.sleep(3)
+        previous_data_version: int = 0
+        while not self.stop_thread_event.is_set(): 
+            data_version: int = fm.cur.execute("PRAGMA data_version").fetchone()[0]
+
+            if data_version != previous_data_version:
+                previous_data_version = data_version
+                for associate, count in fm.get_associate_counts().items():
+                    if associate not in self.associate_lbl_map.keys():
+                        self.associate_lbl_map[associate] = tk.Label(self, text=f"{associate}: {count}")
+                        self.associate_lbl_map[associate].pack()
+                        continue
+                    self.associate_lbl_map[associate].configure(text=f"{associate}: {count}")
+        fm.con.close()
 
     def stop_stat_pane(self) -> None:
-        ...
-        # self.stop_thread_event.set()
+        self.stop_thread_event.set()
 
 class App(tk.Tk):
     def __init__(self) -> None:
