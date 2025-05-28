@@ -37,12 +37,14 @@ ALL_FOLDER: Path = NC_FOLDER / "ALL"
 
 DB_FILE: Path = BASE_DIR / "files.db"
 
+
 class CaseType(Enum):
     DS = 1
     ASC = 2
     TLOC = 3
     AOT = 4
     AOTP = 5
+
 
 class NCFile(NamedTuple):
     path: Path
@@ -89,7 +91,7 @@ def check_file(nc_file: NCFile) -> tuple[NCError, ...]:
     errors: list[NCError] = []
     part_length: float = 0
     cut_off: float = 0
-    case_type: str = ""
+    case_type: CaseType = CaseType.DS
     contains_text: bool = False
 
     with nc_file.path.open("r") as file:
@@ -97,49 +99,50 @@ def check_file(nc_file: NCFile) -> tuple[NCError, ...]:
         contents = file.readlines()
 
     if "ASC" in first_line:
-        case_type = "ASC"
+        case_type = CaseType.ASC
+
     elif (
         "T-L" in first_line
         or "TLCS" in first_line
         or "TLOC" in first_line
         or "TL14" in first_line
     ):
-        case_type = "TLOC"
+        case_type = CaseType.TLOC
     elif "AOT14" in first_line:
-        case_type = "AOT"
+        case_type = CaseType.AOT
     elif "ATPL" in first_line:
-        case_type = "ATPL"
+        case_type = CaseType.AOTP
     else:
-        case_type = "DS"
+        case_type = CaseType.DS
 
     match case_type:
-        case "DS":
+        case CaseType.DS:
             tools_to_check = [
                 Tool("T0200", min_count=2, max_count=2, order=[0, 1]),
                 Tool("T0700", min_count=1, max_count=None, order=[3]),
                 Tool("T0800", min_count=1, order=[2]),
                 Tool("T0900", min_count=1, order=[4]),
             ]
-        case "ASC":
+        case CaseType.ASC:
             tools_to_check = [
                 Tool("T0200", min_count=2, max_count=2, order=[0, 1]),
                 Tool("T0800", min_count=1, order=[2]),
                 Tool("T1200", min_count=1, order=[4]),
                 Tool("T1300", min_count=1, order=[3]),
             ]
-        case "TLOC":
+        case CaseType.TLOC:
             tools_to_check = [
                 Tool("T0200", min_count=3, max_count=3, order=[0, 1, 3]),
                 Tool("T0800", min_count=2, order=[2, 4]),
                 Tool("T0700", min_count=1, order=[5]),
             ]
-        case "AOT":
+        case CaseType.AOT:
             tools_to_check = [
                 Tool("T0200", min_count=3, max_count=3, order=[0, 1, 3]),
                 Tool("T0800", min_count=2, order=[2, 4]),
                 Tool("T0700", min_count=1, order=[5]),
             ]
-        case "ATPL":
+        case CaseType.AOTP:
             return tuple(errors)
 
     contains_subprogram_0: bool = False
@@ -259,14 +262,18 @@ def check_file(nc_file: NCFile) -> tuple[NCError, ...]:
 
     if (
         nc_file.path.name == "4001.prg"
-        and case_type == "ASC"
+        and case_type == CaseType.ASC
         and contains_text is False
     ):
         errors.append(
             NCError(ErrorType.INVALID_NAME, "4001 is not a valid name for ASC files.")
         )
 
-    if case_type == "ASC" or case_type == "TLOC" or case_type == "AOT":
+    if (
+        case_type == CaseType.ASC
+        or case_type == CaseType.TLOC
+        or case_type == CaseType.AOT
+    ):
         if all(
             [
                 contains_ug_101 is False,
@@ -294,12 +301,30 @@ def check_file(nc_file: NCFile) -> tuple[NCError, ...]:
 def get_nc_files(file_path: Path) -> list[NCFile]:
     nc_files: list[NCFile] = []
 
-    for file in file_path.rglob("*.prg", case_sensitive=False):
-        if (
-            "all" not in str(file.resolve()).lower()
-            and "_asc_" not in str(file.resolve()).lower()
+    for nc_file in file_path.rglob("*.prg", case_sensitive=False):
+        with nc_file.open("r") as file:
+            first_line = file.readline()
+
+        if "ASC" in first_line:
+            case_type = CaseType.ASC
+        elif (
+            "T-L" in first_line
+            or "TLCS" in first_line
+            or "TLOC" in first_line
+            or "TL14" in first_line
         ):
-            nc_files.append(NCFile(file.resolve(), file.stat().st_mtime))
+            case_type = CaseType.TLOC
+        elif "AOT14" in first_line:
+            case_type = CaseType.AOT
+        elif "ATPL" in first_line:
+            case_type = CaseType.AOTP
+        else:
+            case_type = CaseType.DS
+        if (
+            "all" not in str(nc_file.resolve()).lower()
+            and "_asc_" not in str(nc_file.resolve()).lower()
+        ):
+            nc_files.append(NCFile(nc_file.resolve(), case_type, nc_file.stat().st_mtime))
 
     return nc_files
 
@@ -327,6 +352,7 @@ class FileManager:
                 "nc_file_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                 "nc_file_path TEXT NOT NULL UNIQUE,"
                 "nc_file_name TEXT NOT NULL,"
+                "case_type INTEGER NOT NULL,"
                 "nc_file_modified_time REAL NOT NULL)"
             )
         )
@@ -409,12 +435,32 @@ class FileManager:
         nc_files: list[NCFile] = []
 
         results = self.cur.execute(
-            "SELECT nc_file_path, nc_file_modified_time FROM nc_files"
+            "SELECT nc_file_path, case_type, nc_file_modified_time FROM nc_files"
         )
 
         for row in results.fetchall():
-            nc_files.append(NCFile(Path(row[0]), row[1]))
+            nc_files.append(NCFile(Path(row[0]), CaseType(row[1]), row[2]))
         return nc_files
+
+    def get_ds_count(self) -> int:
+        results = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.DS.value,)).fetchall()
+        return len(results)
+
+    def get_asc_count(self) -> int:
+        results = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.ASC.value,)).fetchall()
+        return len(results)
+
+    def get_tl_count(self) -> int:
+        results = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.TLOC.value,)).fetchall()
+        return len(results)
+
+    def get_aot_count(self) -> int:
+        results = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.AOT.value,)).fetchall()
+        return len(results)
+
+    def get_aotp_count(self) -> int:
+        results = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.AOTP.value,)).fetchall()
+        return len(results)
 
     def get_case_counts(self) -> dict[str, int]:
         nc_files = self.get_all_nc_files()
@@ -447,7 +493,7 @@ class FileManager:
 
     def get_associate_counts(self) -> dict[str, int]:
         associate_map: dict[str, int] = {}
-        
+
         for folder in NC_FOLDER.iterdir():
             if not associate_map.get(folder.name):
                 associate_map[folder.name] = 0
@@ -455,13 +501,13 @@ class FileManager:
             for _ in folder.rglob("*.prg", case_sensitive=False):
                 associate_map[folder.name] += 1
 
-        return associate_map 
+        return associate_map
 
     def add_to_database(self, nc_file: NCFile) -> None:
         try:
             self.cur.execute(
-                "INSERT INTO nc_files (nc_file_path, nc_file_name, nc_file_modified_time) VALUES (?, ?, ?)",
-                (str(nc_file.path), nc_file.path.name, nc_file.path.stat().st_mtime),
+                "INSERT INTO nc_files (nc_file_path, nc_file_name, case_type, nc_file_modified_time) VALUES (?, ?, ?, ?)",
+                (str(nc_file.path), nc_file.path.name, nc_file.case_type.value, nc_file.path.stat().st_mtime),
             )
             if self.cur.lastrowid:
                 file_id: int = self.cur.lastrowid
@@ -595,17 +641,17 @@ class FileManager:
         nc_files: list[NCFile] = []
 
         res = self.cur.execute(
-            "SELECT nc_file_path, nc_file_modified_time FROM nc_files WHERE nc_file_name = ?",
+            "SELECT nc_file_path, case_type, nc_file_modified_time FROM nc_files WHERE nc_file_name = ?",
             (nc_file.path.name,),
         )
         for row in res.fetchall():
-            nc_files.append(NCFile(Path(row[0]), row[1]))
+            nc_files.append(NCFile(Path(row[0]), CaseType(row[1]), row[2]))
         return nc_files
 
     def get_duplicates(self) -> list[NCFile]:
         res = self.cur.execute(
             (
-                "SELECT nc_file_path, nc_file_modified_time FROM nc_files "
+                "SELECT nc_file_path, case_type, nc_file_modified_time FROM nc_files "
                 "WHERE "
                 "NOT EXISTS ("
                 "SELECT 1 FROM gathered_nc_files WHERE nc_file_id = nc_files.nc_file_id"
@@ -614,7 +660,7 @@ class FileManager:
         )
         duplicates: list[NCFile] = []
         for row in res.fetchall():
-            duplicate_nc = NCFile(Path(row[0]), row[1])
+            duplicate_nc = NCFile(Path(row[0]), CaseType(row[1]), row[2])
             if len(self.get_nc_files_by_name(duplicate_nc)) > 1:
                 duplicates.append(duplicate_nc)
         return duplicates
