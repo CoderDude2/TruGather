@@ -462,6 +462,10 @@ class FileManager:
         results = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.AOTP.value,)).fetchall()
         return len(results)
 
+    def get_gathered_count(self) -> int:
+        results = self.cur.execute("SELECT * FROM gathered_nc_files").fetchall()
+        return len(results)
+
     def get_case_counts(self) -> dict[str, int]:
         nc_files = self.get_all_nc_files()
         case_count: dict[str, int] = {}
@@ -495,6 +499,9 @@ class FileManager:
         associate_map: dict[str, int] = {}
 
         for folder in NC_FOLDER.iterdir():
+            if "all" in folder.name.lower():
+                continue
+
             if not associate_map.get(folder.name):
                 associate_map[folder.name] = 0
 

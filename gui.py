@@ -29,16 +29,62 @@ class MenuBar(tk.Menu):
         elif os.name == "posix":
             os.system(f"open {os.path.join(BASE_DIR, 'resources/help/index.html')}")
 
+
 class StatPanel(tk.Frame):
-    def __init__(self, master = None) -> None:
-        super().__init__(master) 
+    def __init__(self, master=None) -> None:
+        super().__init__(master)
 
-        self.case_lbl_map: dict[str, tk.Label] = {}
+        self.all_count: tk.IntVar = tk.IntVar()
+        self.asc_count: tk.IntVar = tk.IntVar()
+        self.tl_aot_count: tk.IntVar = tk.IntVar()
+        self.ds_count: tk.IntVar = tk.IntVar()
+        self.aotp_count: tk.IntVar = tk.IntVar()
+
         self.associate_lbl_map: dict[str, list[tk.Label]] = {}
+        self.associate_frame: tk.Frame = tk.Frame(self, bg="white")
+        self.associate_frame.grid_columnconfigure(0, weight=1)
 
-        self.grid_columnconfigure(0, weight=1)
+        self.case_frame: tk.Frame = tk.Frame(self, bg="white")
+        self.case_frame.grid_columnconfigure(0, weight=1)
+        self.all_lbl = tk.Label(self.case_frame, text="ALL", bg="white")
+        self.all_count_lbl = tk.Label(
+            self.case_frame, textvariable=self.all_count, bg="white"
+        )
+        self.all_lbl.grid(row=0, column=0, sticky="w")
+        self.all_count_lbl.grid(row=0, column=1, sticky="e", padx=5)
 
-        self.a:list[tk.IntVar] = [] 
+        self.asc_lbl = tk.Label(self.case_frame, text="ASC", bg="white")
+        self.asc_count_lbl = tk.Label(
+            self.case_frame, textvariable=self.asc_count, bg="white"
+        )
+        self.asc_lbl.grid(row=1, column=0, sticky="w")
+        self.asc_count_lbl.grid(row=1, column=1, sticky="e", padx=5)
+
+        self.tl_aot_lbl = tk.Label(self.case_frame, text="TL/AOT", bg="white")
+        self.tl_aot_count_lbl = tk.Label(
+            self.case_frame, textvariable=self.tl_aot_count, bg="white"
+        )
+        self.tl_aot_lbl.grid(row=2, column=0, sticky="w")
+        self.tl_aot_count_lbl.grid(row=2, column=1, sticky="e", padx=5)
+
+        self.ds_lbl = tk.Label(self.case_frame, text="DS", bg="white")
+        self.ds_count_lbl = tk.Label(
+            self.case_frame, textvariable=self.ds_count, bg="white"
+        )
+        self.ds_lbl.grid(row=3, column=0, sticky="w")
+        self.ds_count_lbl.grid(row=3, column=1, sticky="e", padx=5)
+
+        self.aotp_lbl = tk.Label(self.case_frame, text="AOTP", bg="white")
+        self.aotp_count_lbl = tk.Label(
+            self.case_frame, textvariable=self.aotp_count, bg="white"
+        )
+        self.aotp_lbl.grid(row=4, column=0, sticky="w")
+        self.aotp_count_lbl.grid(row=4, column=1, sticky="e", padx=5)
+
+        self.case_frame.pack(expand=True, fill=tk.X, pady=5, padx=5)
+        self.associate_frame.pack(expand=True, fill=tk.X, pady=5, padx=5)
+
+        self.a: list[tk.IntVar] = []
         self.a.append(tk.IntVar(value=0))
 
         self.stop_thread_event = threading.Event()
@@ -49,36 +95,76 @@ class StatPanel(tk.Frame):
         row: int = 0
 
         previous_associate_data: dict[str, int] = {}
-        while not self.stop_thread_event.is_set(): 
+        previous_data_version: int = 0
+
+        self.asc_count.set(fm.get_asc_count())
+        self.tl_aot_count.set(fm.get_tl_count() + fm.get_aot_count())
+        self.ds_count.set(fm.get_ds_count())
+        self.aotp_count.set(fm.get_aotp_count())
+        self.all_count.set(fm.get_gathered_count())
+
+        while not self.stop_thread_event.is_set():
             associate_data = fm.get_associate_counts()
 
             if associate_data != previous_associate_data:
                 previous_associate_data = associate_data
+                associates_to_remove = []
+                for associate in self.associate_lbl_map.keys():
+                    if associate not in associate_data.keys():
+                        associates_to_remove.append(associate)
+
+                for associate in associates_to_remove:
+                    labels: list[tk.Label] | None = self.associate_lbl_map.get(
+                        associate
+                    )
+                    if labels:
+                        labels[0].destroy()
+                        labels[1].destroy()
+                    self.associate_lbl_map.pop(associate)
+                    row -= 1
+
                 for associate, count in associate_data.items():
                     if associate not in self.associate_lbl_map.keys():
-                        associate_label: tk.Label = tk.Label(self, text=associate)
-                        count_label: tk.Label = tk.Label(self, text=count)
+                        associate_label: tk.Label = tk.Label(
+                            self.associate_frame, text=associate, bg="white"
+                        )
+                        count_label: tk.Label = tk.Label(
+                            self.associate_frame, text=count, bg="white"
+                        )
 
-                        associate_label.grid(row=row, column=0, sticky='w')
-                        count_label.grid(row=row, column=1, sticky='e', padx=5)
+                        associate_label.grid(row=row, column=0, sticky="w")
+                        count_label.grid(row=row, column=1, sticky="e", padx=5)
 
-                        self.associate_lbl_map[associate] = [associate_label, count_label]
+                        self.associate_lbl_map[associate] = [
+                            associate_label,
+                            count_label,
+                        ]
 
                         row += 1
                         continue
                     self.associate_lbl_map[associate][1].configure(text=count)
+
+            data_version: int = fm.cur.execute("PRAGMA data_version").fetchone()[0]
+            if data_version != previous_data_version:
+                self.asc_count.set(fm.get_asc_count())
+                self.tl_aot_count.set(fm.get_tl_count() + fm.get_aot_count())
+                self.ds_count.set(fm.get_ds_count())
+                self.aotp_count.set(fm.get_aotp_count())
+                self.all_count.set(fm.get_gathered_count())
+
         fm.con.close()
 
     def stop_stat_pane(self) -> None:
         self.stop_thread_event.set()
+
 
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.fp: FileProcessor = FileProcessor()
 
-        self.geometry("445x370")
-        self.minsize(445, 275)
+        self.geometry("445x410")
+        self.minsize(445, 410)
         self.iconbitmap(os.path.join(BASE_DIR, "resources", "icons", "tru-gather.ico"))
 
         self.title("TruGather")
@@ -101,14 +187,14 @@ class App(tk.Tk):
             master=self.control_frame,
             text="Gather All NC",
             padx=20,
-            pady=20,
+            pady=5,
             command=self.fp.gather_all_files,
         )
         self.gather_asc_button: tk.Button = tk.Button(
             master=self.control_frame,
             text="Gather All ASC",
             padx=20,
-            pady=20,
+            pady=5,
             command=self.fp.gather_all_asc_files,
         )
         self.stat_panel: StatPanel = StatPanel(self.control_frame)
