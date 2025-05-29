@@ -502,6 +502,9 @@ class FileManager:
             if "all" in folder.name.lower():
                 continue
 
+            if "_asc_" in folder.name.lower():
+                continue
+
             if not associate_map.get(folder.name):
                 associate_map[folder.name] = 0
 
