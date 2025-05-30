@@ -1,12 +1,12 @@
+import os
+import subprocess
+import threading
+import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import ttk
-import tkinter as tk
-import subprocess
-import os
-import threading
 
-from file_manager import FileManager, NCError, NCFile, ErrorType, is_internet_connected
+from file_manager import ErrorType, FileManager, NCError, NCFile, is_internet_connected
 
 
 @dataclass
