@@ -443,58 +443,29 @@ class FileManager:
         return nc_files
 
     def get_ds_count(self) -> int:
-        results = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.DS.value,)).fetchall()
+        results: list[int] = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.DS.value,)).fetchall()
         return len(results)
 
     def get_asc_count(self) -> int:
-        results = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.ASC.value,)).fetchall()
+        results: list[int] = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.ASC.value,)).fetchall()
         return len(results)
 
     def get_tl_count(self) -> int:
-        results = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.TLOC.value,)).fetchall()
+        results: list[int] = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.TLOC.value,)).fetchall()
         return len(results)
 
     def get_aot_count(self) -> int:
-        results = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.AOT.value,)).fetchall()
+        results: list[int] = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.AOT.value,)).fetchall()
         return len(results)
 
     def get_aotp_count(self) -> int:
-        results = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.AOTP.value,)).fetchall()
+        results: list[int] = self.cur.execute("SELECT nc_file_id FROM nc_files WHERE case_type = ?", (CaseType.AOTP.value,)).fetchall()
         return len(results)
 
     def get_gathered_count(self) -> int:
         results = self.cur.execute("SELECT * FROM gathered_nc_files").fetchall()
         return len(results)
-
-    def get_case_counts(self) -> dict[str, int]:
-        nc_files = self.get_all_nc_files()
-        case_count: dict[str, int] = {}
-
-        case_count["ASC"] = 0
-        case_count["TL/AOT"] = 0
-        case_count["DS"] = 0
-        case_count["AOTP"] = 0
-
-        for nc_file in nc_files:
-            with nc_file.path.open("r") as file:
-                first_line = file.readline()
-            if "ASC" in first_line:
-                case_count["ASC"] += 1
-            elif (
-                "T-L" in first_line
-                or "TLCS" in first_line
-                or "TLOC" in first_line
-                or "TL14" in first_line
-            ):
-                case_count["TL/AOT"] += 1
-            elif "AOT14" in first_line:
-                case_count["TL/AOT"] += 1
-            elif "ATPL" in first_line:
-                case_count["AOTP"] += 1
-            else:
-                case_count["DS"] += 1
-        return case_count
-
+    
     def get_associate_counts(self) -> dict[str, int]:
         associate_map: dict[str, int] = {}
 
