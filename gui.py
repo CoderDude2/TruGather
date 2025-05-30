@@ -1,10 +1,10 @@
-import tkinter as tk
 import os
 import threading
+import tkinter as tk
 from pathlib import Path
 
-from file_manager import FileProcessor, FileManager
 import info_widget
+from file_manager import FileManager, FileProcessor
 
 BASE_DIR = Path(__file__).resolve().parent
 
